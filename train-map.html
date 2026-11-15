@@ -26,6 +26,10 @@ Sublime Text
 - Command + k, Command + j 展示所有函数代码
 
 Version
+- v2.0.3@2026/11/15
+  1. 新增购票段高亮：URL from/to 参数解析起终点，路线/标记/时刻表/徽标联动着色
+  2. 购票段起终点特殊标记（起/终），段外站点降透明度
+  3. 新增图例与购票段徽标
 - v2.0.2@2026/11/14
   1. 补齐站点坐标：滁州 / 定远 / 郑州 / 武陟 / 修武西 / 焦作
   2. 新增缺站兜底策略：缺坐标站点跳过地图标记、路线连线与视野计算，仅在控制台提示
@@ -572,6 +576,98 @@ Version
         .timetable-table .end-station .station-name {
             color: #e74c3c;
         }
+
+        /* 购票段高亮 */
+        .timetable-table tr.in-segment {
+            background: rgba(231, 76, 60, 0.08);
+        }
+        .timetable-table tr.purchased-from {
+            background: rgba(39, 174, 96, 0.18) !important;
+        }
+        .timetable-table tr.purchased-from .station-name {
+            color: #27ae60;
+            font-weight: bold;
+        }
+        .timetable-table tr.purchased-to {
+            background: rgba(231, 76, 60, 0.18) !important;
+        }
+        .timetable-table tr.purchased-to .station-name {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+
+        .station-marker-from {
+            background: #27ae60;
+            color: #fff;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            width: 28px !important;
+            height: 28px !important;
+            line-height: 24px;
+            text-align: center;
+            font-size: 12px;
+            font-weight: bold;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+        }
+        .station-marker-to {
+            background: #e74c3c;
+            color: #fff;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            width: 28px !important;
+            height: 28px !important;
+            line-height: 24px;
+            text-align: center;
+            font-size: 12px;
+            font-weight: bold;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+        }
+
+        #purchased-badge {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            z-index: 1000;
+            background: rgba(255,255,255,0.95);
+            border-left: 4px solid #e74c3c;
+            border-radius: 4px;
+            padding: 8px 12px;
+            font-size: 13px;
+            box-shadow: 0 1px 6px rgba(0,0,0,0.2);
+        }
+        #purchased-badge .pb-title { font-weight: bold; color: #e74c3c; }
+        #purchased-badge .pb-route { margin-top: 2px; color: #333; }
+        #purchased-badge .pb-meta { margin-top: 2px; color: #888; font-size: 12px; }
+
+        #map-legend {
+            position: absolute;
+            bottom: 12px;
+            left: 12px;
+            z-index: 1000;
+            background: rgba(255,255,255,0.92);
+            border-radius: 4px;
+            padding: 8px 10px;
+            font-size: 12px;
+            box-shadow: 0 1px 6px rgba(0,0,0,0.2);
+            line-height: 1.8;
+        }
+        #map-legend .lg-dot {
+            display: inline-block;
+            width: 12px;
+            height: 4px;
+            vertical-align: middle;
+            margin-right: 6px;
+            border-radius: 2px;
+        }
+        #map-legend .lg-pin {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            vertical-align: middle;
+            margin-right: 6px;
+            border: 2px solid #fff;
+        }
         
         .timetable-table .stop-time {
             color: #7f8c8d;
@@ -770,6 +866,7 @@ Version
         };
         
         let TRAIN_LIST = [
+    { train_no: "G1948", train_name: "上海虹桥->焦作", depart_date: "2026-11-15", depart_time: "10:16" },
     { train_no: "G1948", train_name: "上海虹桥->郑州东", depart_date: "2026-11-13", depart_time: "10:16" },
     { train_no: "G137", train_name: "天津西->上海虹桥", depart_date: "2026-10-17", depart_time: "13:55" },
     { train_no: "G1808", train_name: "郑州东->上海虹桥", depart_date: "2026-10-12", depart_time: "10:01" },
@@ -885,6 +982,36 @@ Version
         function getUrlParam(param) {
             const urlParams = new URLSearchParams(window.location.search);
             return urlParams.get(param);
+        }
+
+        /**
+         * 【4.1.3】解析购票段（起终点）
+         * @param {object} trainData - 车次数据
+         * @returns {object|null} { from, to, fromIndex, toIndex }，未提供或不匹配返回 null
+         * @description 读取 URL from/to 参数，在 stations 中定位索引；不匹配则回退为全程高亮
+         */
+        function resolvePurchasedSegment(trainData) {
+            const from = getUrlParam('from');
+            const to = getUrlParam('to');
+            if (!from || !to || !trainData || !trainData.stations) return null;
+            const stations = trainData.stations;
+            const fromIndex = stations.findIndex(s => s.stationName === from);
+            const toIndex = stations.findIndex(s => s.stationName === to);
+            if (fromIndex === -1 || toIndex === -1) {
+                console.warn(`购票段起终点未在车次站点中找到: from=${from} to=${to}，回退全程高亮`);
+                return null;
+            }
+            return { from, to, fromIndex, toIndex };
+        }
+
+        /**
+         * 【4.1.4】判断站点是否在购票段内
+         */
+        function isInPurchasedSegment(index, segment) {
+            if (!segment) return false;
+            const lo = Math.min(segment.fromIndex, segment.toIndex);
+            const hi = Math.max(segment.fromIndex, segment.toIndex);
+            return index >= lo && index <= hi;
         }
 
         /**
@@ -1068,7 +1195,7 @@ Version
          * @param {string} color - 高亮颜色，默认 '#f1c40f'
          * @description 在地图上添加城市高亮圆圈和标签
          */
-        function addCityHighlight(station, index, totalStations, color = '#f1c40f') {
+        function addCityHighlight(station, index, totalStations, color = '#f1c40f', segment = null) {
             if (!hasStationCoordinates(station.stationName)) return;
 
             const coords = getStationCoordinates(station.stationName);
@@ -1081,16 +1208,28 @@ Version
             
             const isStart = index === 0;
             const isEnd = index === totalStations - 1;
+
+            // 购票段起终点换色放大
+            let fillColor = color;
+            let radiusMul = 1;
+            let extraClass = '';
+            if (segment) {
+                if (index === segment.fromIndex) {
+                    fillColor = '#27ae60'; radiusMul = 1.3; extraClass = ' city-highlight-purchased-from';
+                } else if (index === segment.toIndex) {
+                    fillColor = '#e74c3c'; radiusMul = 1.3; extraClass = ' city-highlight-purchased-to';
+                }
+            }
             
-            const pixelRadius = kmToPixelRadius(kmRadius, lat, map);
+            const pixelRadius = kmToPixelRadius(kmRadius * radiusMul, lat, map);
             
             const highlightCircle = L.circle(
                 [lat, lng],
                 {
                     radius: pixelRadius,
-                    className: "city-highlight city-highlight-pulse",
-                    fillColor: color,
-                    color: color
+                    className: "city-highlight city-highlight-pulse" + extraClass,
+                    fillColor: fillColor,
+                    color: fillColor
                 }
             ).addTo(map);
             
@@ -1127,7 +1266,7 @@ Version
          * @param {object} trainData - 车次数据对象
          * @description 在地图上添加站点标记，绑定弹窗和工具提示
          */
-        function addStationMarker(station, index, trainData) {
+        function addStationMarker(station, index, trainData, color = null, segment = null) {
             if (!hasStationCoordinates(station.stationName)) return;
 
             const coords = getStationCoordinates(station.stationName);
@@ -1137,8 +1276,28 @@ Version
             const totalStations = trainData.stations.length;
             const isStart = index === 0;
             const isEnd = index === totalStations - 1;
-            
-            const marker = L.marker([lat, lng]).addTo(map);
+
+            // 购票段起终点用特殊 A/B 标记；段外站降透明度
+            let marker;
+            const isFrom = segment && index === segment.fromIndex;
+            const isTo = segment && index === segment.toIndex;
+            const inSeg = isInPurchasedSegment(index, segment);
+            const dimmed = segment && !inSeg;
+
+            if (isFrom || isTo) {
+                const pinIcon = L.divIcon({
+                    className: isFrom ? 'station-marker-from' : 'station-marker-to',
+                    html: isFrom ? '起' : '终',
+                    iconSize: [28, 28],
+                    iconAnchor: [14, 14]
+                });
+                marker = L.marker([lat, lng], { icon: pinIcon, zIndexOffset: 1000 }).addTo(map);
+            } else {
+                marker = L.marker([lat, lng]).addTo(map);
+                if (dimmed) {
+                    marker.getElement().style.opacity = '0.45';
+                }
+            }
             
             const popup = L.popup({
                 maxWidth: 280,
@@ -1179,7 +1338,7 @@ Version
          * @param {string} color - 路线颜色，默认 '#3498db'
          * @description 在地图上绘制车次路线，绑定弹窗和工具提示
          */
-        function drawRoute(trainData, color = '#3498db') {
+        function drawRoute(trainData, color = '#3498db', segment = null) {
             const routeStations = trainData.stations.filter(
                 station => hasStationCoordinates(station.stationName)
             );
@@ -1189,15 +1348,18 @@ Version
                 const coords = getStationCoordinates(station.stationName);
                 return [coords[0], coords[1]];
             });
-            
+
+            // 全程折线（购票段模式下降透明度作为背景参照）
+            const fullOpacity = segment ? 0.35 : 0.9;
+            const fullWeight = segment ? 4 : 5;
             const routeLineItem = L.polyline(
                 routeCoordinates,
                 {
                     color: color,
-                    opacity: 0.9,
-                    weight: 5,
+                    opacity: fullOpacity,
+                    weight: fullWeight,
                     smoothFactor: 2.0,
-                    className: "route-main"
+                    className: segment ? "route-full" : "route-main"
                 }
             ).addTo(map);
             
@@ -1226,6 +1388,40 @@ Version
                 `<div>${trainData.train_no}次线路</div>`,
                 { sticky: true, direction: "bottom" }
             );
+
+            // 购票段高亮折线（叠加在全程之上）
+            if (segment) {
+                const segCoords = trainData.stations
+                    .filter((s, i) => isInPurchasedSegment(i, segment))
+                    .filter(s => hasStationCoordinates(s.stationName))
+                    .map(s => {
+                        const c = getStationCoordinates(s.stationName);
+                        return [c[0], c[1]];
+                    });
+                if (segCoords.length >= 2) {
+                    const segLine = L.polyline(segCoords, {
+                        color: '#e74c3c',
+                        opacity: 0.95,
+                        weight: 7,
+                        smoothFactor: 1.0,
+                        className: "route-purchased"
+                    }).addTo(map);
+                    routeLines.push(segLine);
+
+                    const segPopup = L.popup({ maxWidth: 240 });
+                    segPopup.setContent(`
+                        <div class="route-popup">
+                            <div class="route-title" style="color:#e74c3c">🎫 购票段</div>
+                            <div class="route-info">
+                                ${segment.from} → ${segment.to}<br>
+                                ${trainData.depart_date}
+                            </div>
+                        </div>
+                    `);
+                    segLine.bindPopup(segPopup);
+                    segLine.bindTooltip(`<div>购票段：${segment.from}→${segment.to}</div>`, { sticky: true, direction: "top" });
+                }
+            }
         }
 
         // ============================================================
@@ -1246,6 +1442,11 @@ Version
             cityLabels = [];
             stationMarkers = [];
             routeLines = [];
+
+            const badge = document.getElementById('purchased-badge');
+            if (badge) badge.remove();
+            const legend = document.getElementById('map-legend');
+            if (legend) legend.remove();
         }
 
         // ============================================================
@@ -1262,19 +1463,22 @@ Version
             
             currentTrainData = trainData;
             const totalStations = trainData.stations.length;
+            const segment = resolvePurchasedSegment(trainData);
             
             document.title = `${trainData.train_no}高铁路线图`;
             
             warnMissingStations([trainData]);
 
             trainData.stations.forEach((station, index) => {
-                addCityHighlight(station, index, totalStations);
-                addStationMarker(station, index, trainData);
+                addCityHighlight(station, index, totalStations, '#f1c40f', segment);
+                addStationMarker(station, index, trainData, null, segment);
             });
             
-            drawRoute(trainData);
+            drawRoute(trainData, '#3498db', segment);
             
-            renderTimetable([trainData]);
+            renderTimetable([trainData], segment);
+            renderPurchasedBadge(segment, trainData);
+            renderLegend(segment);
             
             const allStationPoints = trainData.stations
                 .filter(station => hasStationCoordinates(station.stationName))
@@ -1322,16 +1526,19 @@ Version
             
             warnMissingStations(trainDataList);
 
+            const segments = trainDataList.map(t => resolvePurchasedSegment(t));
+
             trainDataList.forEach((trainData, trainIndex) => {
                 const totalStations = trainData.stations.length;
                 const color = colors[trainIndex % colors.length];
+                const segment = segments[trainIndex];
                 
                 trainData.stations.forEach((station, index) => {
-                    addCityHighlight(station, index, totalStations, color);
-                    addStationMarker(station, index, trainData, color);
+                    addCityHighlight(station, index, totalStations, color, segment);
+                    addStationMarker(station, index, trainData, color, segment);
                 });
                 
-                drawRoute(trainData, color);
+                drawRoute(trainData, color, segment);
                 
                 trainData.stations
                     .filter(station => hasStationCoordinates(station.stationName))
@@ -1342,8 +1549,11 @@ Version
             });
             
             if (renderTimetableAlso) {
-                renderTimetable(trainDataList);
+                renderTimetable(trainDataList, segments);
             }
+            const anySegment = segments.find(s => s) || null;
+            renderPurchasedBadge(anySegment, trainDataList.find((t, i) => segments[i]) || trainDataList[0]);
+            renderLegend(anySegment);
             
             if (allStationPoints.length > 0) {
                 const bounds = L.latLngBounds(allStationPoints);
@@ -1359,7 +1569,7 @@ Version
         // ============================================================
         // 【5】渲染时刻表面板
         // ============================================================
-        function renderTimetable(trainDataList) {
+        function renderTimetable(trainDataList, segmentOrSegments = null) {
             const trainNoEl = document.getElementById('timetable-train-no');
             const trainDateEl = document.getElementById('timetable-train-date');
             const tbody = document.getElementById('timetable-tbody');
@@ -1383,6 +1593,7 @@ Version
                 const totalStations = stations.length;
                 const trainKey = `${trainData.depart_date.replace(/-/g, '')}-${trainData.train_no}`;
                 const isVisible = visibleTrainKeys.includes(trainKey);
+                const segment = Array.isArray(segmentOrSegments) ? segmentOrSegments[trainIndex] : segmentOrSegments;
                 
                 const headerRow = document.createElement('tr');
                 headerRow.className = 'train-section-header';
@@ -1412,6 +1623,13 @@ Version
                     } else if (index === totalStations - 1) {
                         row.classList.add('end-station');
                     }
+
+                    // 购票段行高亮
+                    if (segment) {
+                        if (index === segment.fromIndex) row.classList.add('purchased-from');
+                        else if (index === segment.toIndex) row.classList.add('purchased-to');
+                        else if (isInPurchasedSegment(index, segment)) row.classList.add('in-segment');
+                    }
                     
                     const arrivalTime = station.arrivalTime || '-';
                     const departureTime = station.departureTime || '-';
@@ -1428,6 +1646,46 @@ Version
                     tbody.appendChild(row);
                 });
             });
+        }
+
+        /**
+         * 【5.4】渲染购票段徽标（左上角）
+         */
+        function renderPurchasedBadge(segment, trainData) {
+            if (!segment) return;
+            const mapContainer = document.getElementById('map-container');
+            if (!mapContainer) return;
+            const badge = document.createElement('div');
+            badge.id = 'purchased-badge';
+            const segStations = trainData.stations.filter((s, i) => isInPurchasedSegment(i, segment));
+            const count = segStations.length;
+            badge.innerHTML = `
+                <div class="pb-title">🎫 购票段</div>
+                <div class="pb-route">${segment.from} → ${segment.to}</div>
+                <div class="pb-meta">${trainData.train_no}次 · ${trainData.depart_date} · 共 ${count} 站</div>
+            `;
+            mapContainer.appendChild(badge);
+        }
+
+        /**
+         * 【5.5】渲染图例（左下角）
+         */
+        function renderLegend(segment) {
+            const mapContainer = document.getElementById('map-container');
+            if (!mapContainer) return;
+            const legend = document.createElement('div');
+            legend.id = 'map-legend';
+            let html = '<div><span class="lg-dot" style="background:#3498db"></span>全程路线</div>';
+            if (segment) {
+                html += '<div><span class="lg-dot" style="background:#e74c3c"></span>购票段</div>';
+                html += '<div><span class="lg-pin" style="background:#27ae60"></span>购票起点</div>';
+                html += '<div><span class="lg-pin" style="background:#e74c3c"></span>购票终点</div>';
+            } else {
+                html += '<div><span class="lg-pin" style="background:#27ae60"></span>起点</div>';
+                html += '<div><span class="lg-pin" style="background:#e74c3c"></span>终点</div>';
+            }
+            legend.innerHTML = html;
+            mapContainer.appendChild(legend);
         }
         
         // ============================================================
@@ -1780,51 +2038,60 @@ Version
          * @returns {Promise<boolean>} 加载成功返回 true，失败返回 false
          * @description 从 Supabase 数据库加载最近 10 条车次数据
          */
-        async function fetchTrainData() {
-            try {
-                const { data, error } = await supabaseClient
-                    .from('train_schedules')
-                    .select('id, train_no, train_name, depart_date, ticket_checkpoint, seat, stations, created_at, updated_at')
-                    .order('depart_date', { ascending: false })
-                    .limit(10);
-                
-                if (error) {
-                    console.error('从 Supabase 获取数据失败:', error);
-                    return false;
-                }
-                
-                if (!data || data.length === 0) {
-                    console.warn('Supabase 返回空数据');
-                    return false;
-                }
-                
-                TRAIN_DATA = {};
-                TRAIN_LIST = [];
-                
-                data.forEach(train => {
-                    const key = `${train.depart_date.replace(/-/g, '')}-${train.train_no}`;
-                    TRAIN_DATA[key] = {
-                        train_no: train.train_no,
-                        train_name: train.train_name,
-                        depart_date: train.depart_date,
-                        stations: train.stations || []
-                    };
-                    
-                    const firstStation = train.stations && train.stations[0];
-                    TRAIN_LIST.push({
-                        train_no: train.train_no,
-                        train_name: train.train_name,
-                        depart_date: train.depart_date,
-                        depart_time: firstStation ? firstStation.departureTime : ''
+        async function fetchTrainData(retries = 3, timeoutMs = 8000) {
+            // 2026-11-15：Supabase/web 网络抖动时原实现无超时，Promise 永不落地 ⇒
+            // 一直停在「正在加载车次数据…」。现加超时 + 退避重试，最终失败给出可见错误。
+            for (let attempt = 1; attempt <= retries; attempt++) {
+                try {
+                    const query = supabaseClient
+                        .from('train_schedules')
+                        .select('id, train_no, train_name, depart_date, ticket_checkpoint, seat, stations, created_at, updated_at')
+                        .order('depart_date', { ascending: false })
+                        .limit(10);
+                    const timeout = new Promise((_, reject) => setTimeout(
+                        () => reject(new Error(`请求超时（${timeoutMs}ms）`)), timeoutMs));
+                    const { data, error } = await Promise.race([query, timeout]);
+
+                    if (error) throw new Error(error.message || 'Supabase 返回错误');
+                    if (!data || data.length === 0) {
+                        console.warn('Supabase 返回空数据');
+                        return false;
+                    }
+
+                    TRAIN_DATA = {};
+                    TRAIN_LIST = [];
+
+                    data.forEach(train => {
+                        const key = `${train.depart_date.replace(/-/g, '')}-${train.train_no}`;
+                        TRAIN_DATA[key] = {
+                            train_no: train.train_no,
+                            train_name: train.train_name,
+                            depart_date: train.depart_date,
+                            stations: train.stations || []
+                        };
+
+                        const firstStation = train.stations && train.stations[0];
+                        TRAIN_LIST.push({
+                            train_no: train.train_no,
+                            train_name: train.train_name,
+                            depart_date: train.depart_date,
+                            depart_time: firstStation ? firstStation.departureTime : ''
+                        });
                     });
-                });
-                
-                console.log(`从 Supabase 加载 ${Object.keys(TRAIN_DATA).length} 条车次数据`);
-                return true;
-            } catch (err) {
-                console.error('加载车次数据异常:', err);
-                return false;
+
+                    console.log(`从 Supabase 加载 ${Object.keys(TRAIN_DATA).length} 条车次数据`
+                        + (attempt > 1 ? `（第 ${attempt} 次尝试成功）` : ''));
+                    return true;
+                } catch (err) {
+                    console.warn(`第 ${attempt}/${retries} 次加载车次数据失败:`, err && err.message);
+                    if (attempt === retries) {
+                        showError(`车次数据加载失败（网络）：${(err && err.message) || '未知错误'}，已回退内置数据`);
+                        return false;
+                    }
+                    await new Promise(r => setTimeout(r, 800 * attempt));
+                }
             }
+            return false;
         }
 
         // ============================================================
