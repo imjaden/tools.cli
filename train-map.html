@@ -1,0 +1,1870 @@
+<!-- 
+============================================================
+高铁路线图 - 高铁车次路线可视化工具
+============================================================
+
+Description
+- 使用 Leaflet 渲染高德地图，展示高铁车次路线
+- 从 Supabase 数据库加载车次数据，支持多车次同时显示
+- 提供车次列表弹框、时刻表面板等交互功能
+- 支持通过 URL 参数指定车次，实现快速分享
+
+Environments
+- macOS 15.1.1 24B91
+- Chrome 134.0.6998.166 / Safari 18.2
+- IDE Trae CN 1.0.0 (Trae CN)
+- LLM GLM-5 (智谱 AI)
+
+Dependency
+- Leaflet 1.9.3 - 地图渲染库
+- jQuery 3.7.1 - DOM 操作库
+- Supabase JS SDK 2.x - 数据库客户端
+- Font Awesome 6.2.0 - 图标库
+
+Sublime Text
+- Command + k, Command + 1 收缩所有函数代码
+- Command + k, Command + j 展示所有函数代码
+
+Version
+- v2.0.2@2026/11/14
+  1. 补齐站点坐标：滁州 / 定远 / 郑州 / 武陟 / 修武西 / 焦作
+  2. 新增缺站兜底策略：缺坐标站点跳过地图标记、路线连线与视野计算，仅在控制台提示
+- v2.0.1@2026/11/14
+  1. 修复 TRAIN_LIST 重复声明导致的 SyntaxError（移除冗余 let，兜底列表改 let 以支持 Supabase 覆盖）
+- v2.0.0@2026/04/08
+  1. 地图基础功能 - 使用 Leaflet 渲染高德地图
+  2. 车次数据加载 - 从 Supabase 数据库加载车次数据
+  3. 车次列表弹框 - 显示所有可用车次列表，支持多选
+  4. 地图路线渲染 - 多车次颜色区分，城市高亮圆圈
+  5. 时刻表面板 - 右上角固定宽度面板，多车次时刻表合并显示
+  6. 交互功能 - 点击站点显示详细信息，URL 参数同步
+============================================================
+-->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <link rel="canonical" href="https://tools.cli.jaden.tech/train-map.html">
+    <!--
+    ============================================================
+    高铁路线图 - 功能清单
+    ============================================================
+    
+    【1】地图基础功能
+        - 使用 Leaflet 渲染高德地图
+        - 支持鼠标滚轮/触摸板缩放
+        - 支持触摸拖拽
+        - 自定义缩放控件
+    
+    【2】车次数据加载
+        - 从 Supabase 数据库加载车次数据
+        - 支持 URL 参数指定车次 (?no=车次编号)
+        - 支持多车次同时加载 (?no=车次1,车次2)
+        - 加载失败时使用默认 G80 数据
+    
+    【3】车次列表弹框
+        - 显示所有可用车次列表
+        - 支持多选功能（Checkbox）
+        - 勾选状态记忆功能
+        - 实时刷新地图和时刻表
+    
+    【4】地图路线渲染
+        - 多车次颜色区分
+        - 城市高亮圆圈
+        - 站点标记（起点/终点/途经站）
+        - 路线连接线
+    
+    【5】时刻表面板
+        - 右上角固定宽度面板
+        - 多车次时刻表合并显示
+        - 每个车次可独立折叠/展开
+        - Checkbox 控制地图显示（不影响车次列表）
+        - 默认折叠状态
+    
+    【6】交互功能
+        - 点击站点显示详细信息
+        - 鼠标悬停显示站点名称
+        - 地图自适应路线范围
+        - URL 参数同步
+    
+    ============================================================
+    -->
+    <link rel="shortcut icon" href="https://www.jaden.tech/static/img/favicon.png?t=1762762432">
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.2.0/css/all.min.css"/>
+    
+    <title>高铁路线图</title>
+    
+    <style>
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+        
+        #map-container {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+            height: 100dvh;
+        }
+        
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            right: 0;
+            left: 0;
+        }
+        
+        .leaflet-container {
+            font-size: 14px;
+            touch-action: pan-x pan-y;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        .train-popup {
+            min-width: 160px;
+            max-width: 280px;
+            padding: 8px !important;
+        }
+        
+        .train-popup b {
+            font-size: 15px;
+            color: #2c3e50;
+        }
+        
+        .train-popup .station-name {
+            font-size: 13px;
+            color: #34495e;
+            margin: 4px 0;
+        }
+        
+        .train-popup .time-info {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin: 2px 0;
+        }
+        
+        .route-popup {
+            text-align: center;
+            padding: 8px;
+            min-width: 140px;
+        }
+        
+        .route-popup .route-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #e67e22;
+            margin-bottom: 6px;
+        }
+        
+        .route-popup .route-info {
+            font-size: 13px;
+            color: #34495e;
+        }
+        
+        .station-tooltip {
+            font-weight: bold;
+            font-size: 12px;
+            padding: 2px 6px;
+            background: rgba(255,255,255,0.9);
+            border-radius: 3px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+        
+        .route-main {
+            color: #3498db !important;
+            fillColor: #3498db !important;
+        }
+        
+        .city-highlight {
+            fill: #f1c40f;
+            fillOpacity: 0.3;
+            stroke: #f39c12;
+            strokeWidth: 2;
+            strokeOpacity: 0.8;
+            pointerEvents: none;
+        }
+        
+        @keyframes cityPulse {
+            0%, 100% { fillOpacity: 0.2; strokeOpacity: 0.5; }
+            50% { fillOpacity: 0.4; strokeOpacity: 1; }
+        }
+        
+        .city-highlight-pulse {
+            animation: cityPulse 3s ease-in-out infinite;
+        }
+        
+        .city-label {
+            background: transparent;
+            border: none;
+            font-weight: bold;
+            font-size: 10px;
+            color: #2c3e50;
+            text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 8px rgba(255,255,255,0.9);
+            white-space: nowrap;
+            text-align: center;
+            pointer-events: none;
+        }
+        
+        .city-label-start { color: #27ae60; font-size: 10px; }
+        .city-label-end { color: #e74c3c; font-size: 10px; }
+        .city-label-middle { color: #3498db; }
+        
+        .leaflet-control-custom-zoom {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+            overflow: hidden;
+        }
+        
+        .zoom-btn {
+            width: 40px;
+            height: 40px;
+            border: none;
+            background: white;
+            color: #2c3e50;
+            font-size: 22px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+        }
+        
+        .zoom-btn:hover { background: #f8f9fa; color: #3498db; }
+        .zoom-btn:active { background: #e9ecef; transform: scale(0.95); }
+        .zoom-btn-zoom-in { border-bottom: 1px solid #e9ecef; }
+        .zoom-btn-zoom-out { border-top: 1px solid #e9ecef; }
+        
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255,255,255,0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+        
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .loading-text {
+            margin-top: 15px;
+            font-size: 16px;
+            color: #2c3e50;
+        }
+        
+        .error-message {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #e74c3c;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            z-index: 10000;
+            font-size: 14px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        
+        @media (max-width: 768px) {
+            .leaflet-container { font-size: 12px; }
+            .train-popup b { font-size: 14px; }
+            .train-popup .station-name { font-size: 12px; }
+            .train-popup .time-info { font-size: 11px; }
+            .train-popup, .route-popup { padding: 6px !important; }
+            .zoom-btn { width: 44px; height: 44px; font-size: 24px; }
+        }
+        
+        .train-list-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 10001;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .train-list-modal.show {
+            display: flex;
+        }
+        
+        .train-list-content {
+            background: white;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        
+        .train-list-header {
+            padding: 16px 20px;
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .train-list-close {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: background 0.2s;
+        }
+        
+        .train-list-close:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .train-list-body {
+            max-height: calc(80vh - 120px);
+            overflow-y: auto;
+            padding: 0;
+        }
+        
+        .train-item {
+            padding: 12px 20px;
+            border-bottom: 1px solid #ecf0f1;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+        
+        .train-item:hover {
+            background: #f8f9fa;
+        }
+        
+        .train-item:last-child {
+            border-bottom: none;
+        }
+        
+        .train-item-checkbox {
+            flex-shrink: 0;
+            margin-top: 4px;
+        }
+        
+        .train-item-checkbox input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: #3498db;
+        }
+        
+        .train-item-content {
+            flex: 1;
+            min-width: 0;
+        }
+        
+        .train-item-date {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-bottom: 4px;
+        }
+        
+        .train-item-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .train-item-no {
+            font-size: 16px;
+            font-weight: bold;
+            color: #3498db;
+        }
+        
+        .train-item-route {
+            font-size: 14px;
+            color: #2c3e50;
+            flex: 1;
+            margin-left: 12px;
+        }
+        
+        .train-item-time {
+            font-size: 14px;
+            color: #e67e22;
+            font-weight: bold;
+        }
+        
+        .switch-btn {
+            width: 40px;
+            height: 40px;
+            border: none;
+            background: white;
+            color: #2c3e50;
+            font-size: 18px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+        }
+        
+        .switch-btn:hover { background: #f8f9fa; color: #3498db; }
+        .switch-btn:active { background: #e9ecef; transform: scale(0.95); }
+        
+        .timetable-panel {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            z-index: 1000;
+            width: 400px;
+            max-height: 70vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .timetable-header {
+            padding: 12px 16px;
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        
+        .timetable-header-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .timetable-header .train-no {
+            font-size: 18px;
+            font-weight: bold;
+        }
+        
+        .timetable-header .train-date {
+            font-size: 12px;
+            opacity: 0.9;
+        }
+        
+        .timetable-toggle {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 14px;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        
+        .timetable-toggle:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .timetable-body {
+            overflow-y: auto;
+            flex: 1;
+        }
+        
+        .timetable-body.collapsed {
+            display: none;
+        }
+        
+        .timetable-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        
+        .timetable-table th {
+            background: #f8f9fa;
+            padding: 8px 10px;
+            text-align: center;
+            font-weight: 600;
+            color: #495057;
+            position: sticky;
+            top: 0;
+            border-bottom: 2px solid #dee2e6;
+        }
+        
+        .timetable-table td {
+            padding: 8px 10px;
+            text-align: center;
+            border-bottom: 1px solid #ecf0f1;
+        }
+        
+        .timetable-table tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .timetable-table .station-name {
+            font-weight: 500;
+            color: #2c3e50;
+        }
+        
+        .timetable-table .time {
+            color: #e67e22;
+            font-weight: 500;
+        }
+        
+        .timetable-table .start-station {
+            background: rgba(39, 174, 96, 0.1);
+        }
+        
+        .timetable-table .start-station .station-name {
+            color: #27ae60;
+        }
+        
+        .timetable-table .end-station {
+            background: rgba(231, 76, 60, 0.1);
+        }
+        
+        .timetable-table .end-station .station-name {
+            color: #e74c3c;
+        }
+        
+        .timetable-table .stop-time {
+            color: #7f8c8d;
+            font-size: 12px;
+        }
+        
+        .train-section-header {
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        .train-section-header:hover {
+            opacity: 0.9;
+        }
+        
+        .train-section-header td {
+            position: relative;
+            text-align: left;
+            padding: 8px 10px;
+            font-weight: bold;
+        }
+        
+        .train-section-checkbox {
+            margin-right: 8px;
+            cursor: pointer;
+            width: 16px;
+            height: 16px;
+            vertical-align: middle;
+        }
+        
+        .train-section-title {
+            display: inline;
+            padding-right: 30px;
+        }
+        
+        .train-section-toggle {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+            padding: 4px 8px;
+            font-size: 12px;
+            opacity: 0.8;
+            transition: opacity 0.2s;
+        }
+        
+        .train-section-toggle:hover {
+            opacity: 1;
+        }
+        
+        .train-section-body.collapsed {
+            display: none;
+        }
+        
+        @media (max-width: 768px) {
+            .timetable-panel {
+                width: 280px;
+                max-height: 50vh;
+                top: 5px;
+                right: 5px;
+            }
+            
+            .timetable-table {
+                font-size: 12px;
+            }
+            
+            .timetable-table th,
+            .timetable-table td {
+                padding: 6px 8px;
+            }
+        }
+    </style>
+
+    <script>
+        var L_NO_TOUCH = false;
+        var L_DISABLE_3D = true;
+    </script>
+</head>
+
+<body>
+    <div id="loading-overlay" class="loading-overlay">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">正在加载车次数据...</div>
+    </div>
+    
+    <div id="map-container">
+        <div id="map"></div>
+    </div>
+    
+    <div id="timetable-panel" class="timetable-panel">
+        <div class="timetable-header" onclick="toggleTimetable()">
+            <div class="timetable-header-left">
+                <span class="train-no" id="timetable-train-no">G80</span>
+                <span class="train-date" id="timetable-train-date">2026-03-19</span>
+            </div>
+            <button class="timetable-toggle" id="timetable-toggle-btn">
+                <i class="fas fa-chevron-up"></i>
+            </button>
+        </div>
+        <div class="timetable-body" id="timetable-body">
+            <table class="timetable-table">
+                <thead>
+                    <tr>
+                        <th>站次</th>
+                        <th>车站</th>
+                        <th>到达</th>
+                        <th>发车</th>
+                        <th>停留</th>
+                    </tr>
+                </thead>
+                <tbody id="timetable-tbody">
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <div id="train-list-modal" class="train-list-modal">
+        <div class="train-list-content">
+            <div class="train-list-header">
+                <span>🚄 车次列表（可多选）</span>
+                <button class="train-list-close" onclick="closeTrainListModal()">&times;</button>
+            </div>
+            <div class="train-list-body" id="train-list-body">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /* 
+        ============================================================
+        高铁路线图 - JavaScript 功能模块
+        ============================================================
+        
+        【1】协议适配 - 自动适配 HTTP[s]/File 协议
+        【2】数据加载 - 从 Supabase 加载车次数据
+        【3】地图管理 - 地图初始化与渲染
+        【4】路线渲染 - 车次路线绘制
+        【5】时刻表面板 - 时刻表显示与交互
+        【6】车次列表 - 车次选择弹框
+        【7】交互处理 - 用户交互事件
+        【8】工具函数 - 通用工具方法
+        ============================================================
+        */
+        
+        // ============================================================
+        // 【1】协议适配 - 自动适配 HTTP[s]/File 协议
+        // ============================================================
+        const ProtocolAdapter = {
+            isFileProtocol: function() {
+                return window.location.protocol === 'file:';
+            },
+            
+            getBasePath: function() {
+                const protocol = window.location.protocol;
+                if (protocol === 'file:') {
+                    const path = window.location.pathname;
+                    return path.substring(0, path.lastIndexOf('/') + 1);
+                }
+                return '';
+            },
+            
+            resolvePath: function(relativePath) {
+                return this.getBasePath() + relativePath;
+            }
+        };
+        
+        // ============================================================
+        // 【2】数据加载 - Supabase 配置与数据加载
+        // ============================================================
+        const SUPABASE_URL = 'https://wbbjgpsxkhomvwxgjfov.supabase.co';
+        // 公开可读凭据（publishable key，等价 anon；写权限已在库侧收回）
+        // 来源: secret-manager supabase.publishable-key
+        const SUPABASE_KEY = 'sb_publishable_oP1j0C1fG8W7ViQXI9TMwQ_EW19ClVS';
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        
+        // 全局车次数据（从 Supabase 加载）
+        let TRAIN_DATA = {};
+        
+        // G80 默认车次数据（加载失败时使用）
+        const DEFAULT_TRAIN_DATA = {
+            train_no: "G80",
+            train_name: "上海虹桥->郑州东",
+            depart_date: "2026-03-19",
+            stations: [
+                { stationNo: "1", stationName: "上海虹桥", arrivalTime: "起始站", departureTime: "08:00", stopTime: null },
+                { stationNo: "2", stationName: "苏州北", arrivalTime: "08:22", departureTime: "08:24", stopTime: "2分钟" },
+                { stationNo: "3", stationName: "南京南", arrivalTime: "09:02", departureTime: "09:04", stopTime: "2分钟" },
+                { stationNo: "4", stationName: "徐州东", arrivalTime: "10:08", departureTime: "10:10", stopTime: "2分钟" },
+                { stationNo: "5", stationName: "商丘", arrivalTime: "10:52", departureTime: "10:54", stopTime: "2分钟" },
+                { stationNo: "6", stationName: "郑州东", arrivalTime: "11:43", departureTime: "终点站", stopTime: null }
+            ]
+        };
+        
+        let TRAIN_LIST = [
+    { train_no: "G1948", train_name: "上海虹桥->郑州东", depart_date: "2026-11-13", depart_time: "10:16" },
+    { train_no: "G137", train_name: "天津西->上海虹桥", depart_date: "2026-10-17", depart_time: "13:55" },
+    { train_no: "G1808", train_name: "郑州东->上海虹桥", depart_date: "2026-10-12", depart_time: "10:01" },
+    { train_no: "G2051", train_name: "濮阳东->郑州东", depart_date: "2026-10-08", depart_time: "07:22" },
+    { train_no: "G7932", train_name: "郑州东->濮阳东", depart_date: "2026-09-30", depart_time: "10:10" },
+    { train_no: "G1", train_name: "北京南->上海虹桥", depart_date: "2026-08-19", depart_time: "06:30" },
+    { train_no: "G3368", train_name: "郑州东->濮阳东", depart_date: "2026-05-28", depart_time: "08:18" },
+    { train_no: "G80", train_name: "上海虹桥->郑州东", depart_date: "2026-05-25", depart_time: "14:04" }
+];
+
+        // 城市坐标映射表（站名 -> [纬度, 经度, 高亮半径km]）
+        const STATION_COORDINATES = {
+            // 上海方向
+            "上海虹桥": [31.1949, 121.3362, 25],
+            "苏州北": [31.3696, 120.7429, 17],
+            "昆山南": [31.3706, 120.9540, 12],
+            "常州北": [31.8463, 120.0127, 15],
+            "丹阳北": [32.0107, 119.5690, 10],
+            "镇江南": [32.2044, 119.4333, 12],
+            "无锡东": [31.4582, 120.4023, 15],
+            // 南京方向
+            "南京南": [31.9568, 118.8463, 20],
+            "滁州": [32.2019, 118.3167, 12],
+            "定远": [32.5067, 117.6600, 8],
+            "蚌埠南": [32.9167, 117.3631, 12],
+            // 徐州方向
+            "徐州东": [34.2092, 117.3368, 15],
+            "永城北": [33.9394, 116.3708, 8],
+            // 河南方向
+            "商丘": [34.4467, 115.6578, 12],
+            "开封北": [34.8178, 114.3519, 12],
+            "郑州东": [34.7745, 113.8913, 17],
+            "郑州": [34.7466, 113.6250, 15],
+            "武陟": [35.0775, 113.4117, 8],
+            "修武西": [35.2119, 113.3700, 8],
+            "焦作": [35.2219, 113.2394, 15],
+            "郑州航空港": [34.5367, 113.8417, 12],
+            "新乡东": [35.3094, 113.9244, 12],
+            "卫辉南": [35.3883, 114.0694, 8],
+            "滑浚": [35.5611, 114.5381, 8],
+            "濮阳东": [35.7615, 115.0292, 12],
+            "禹州": [34.1572, 113.4583, 8],
+            "平顶山西": [33.7356, 113.0561, 10],
+            "方城": [33.2544, 113.0128, 8],
+            "南阳东": [32.9906, 112.5319, 12],
+            "扶沟南": [34.0594, 114.3931, 8],
+            "周口东": [33.6259, 114.6931, 10],
+            "洛阳龙门": [34.6181, 112.4539, 15],
+            // 山东方向
+            "济南东": [36.6867, 117.1698, 18],
+            "济南西": [36.6512, 116.9418, 18],
+            "聊城西": [36.4333, 115.9833, 12],
+            "茌平南": [36.4806, 116.2544, 8],
+            "淄博北": [36.8306, 118.0533, 12],
+            "青岛": [36.0671, 120.3826, 20],
+            // 北京方向
+            "北京南": [39.8652, 116.3786, 25],
+            "北京西": [39.8946, 116.3222, 25],
+            "石家庄": [38.0428, 114.5149, 18],
+            "沧州西": [38.4867, 116.8283, 12],
+            "天津西": [39.1522, 117.0633, 18],
+            "天津": [39.1333, 117.2000, 18],
+            "唐山": [39.6306, 118.1833, 12],
+            "秦皇岛": [39.9353, 119.6003, 12],
+            "山海关": [39.9781, 119.7756, 10],
+            // 东北方向
+            "兴城西": [40.6883, 120.7333, 8],
+            "葫芦岛北": [40.7833, 120.8667, 10],
+            "锦州南": [41.0833, 121.1167, 12],
+            "沈阳北": [41.8292, 123.4333, 20],
+            // 华中方向
+            "武汉": [30.6150, 114.3211, 20],
+            "汉口": [30.6183, 114.2500, 18],
+            "信阳东": [32.1167, 114.0667, 12],
+            "驻马店西": [32.9800, 114.0167, 10],
+            "漯河西": [33.5833, 114.0167, 10],
+            // 华南方向
+            "长沙南": [28.1533, 113.0667, 18],
+            "广州南": [22.9892, 113.2694, 25],
+            "深圳北": [22.6097, 114.0297, 20],
+            "香港西九龙": [22.3047, 114.1614, 20],
+            // 西南方向
+            "成都东": [30.6289, 104.1367, 20],
+            "广元": [32.4356, 105.8439, 12],
+            // 西北方向
+            "西安北": [34.3783, 108.9394, 18]
+        };
+        
+        // 默认坐标（未找到时使用）
+        const DEFAULT_COORDINATE = [34.0, 116.0, 10];
+
+        // ============================================================
+        // 【3】地图管理 - 全局变量
+        // ============================================================
+        var map;
+        var cityHighlights = [];
+        var cityLabels = [];
+        var stationMarkers = [];
+        var routeLines = [];
+        var currentTrainData = null;
+
+        // ============================================================
+        // 【8】工具函数 - 通用工具方法
+        // ============================================================
+        
+        /**
+         * 【8.1】获取 URL 参数
+         * @param {string} param - 参数名称
+         * @returns {string|null} 参数值，不存在则返回 null
+         * @example
+         *   getUrlParam('no') // 返回 URL 中 no 参数的值
+         */
+        function getUrlParam(param) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(param);
+        }
+
+        /**
+         * 【8.2】显示错误提示
+         * @param {string} message - 错误消息内容
+         * @description 在页面顶部显示红色错误提示，5秒后自动消失
+         */
+        function showError(message) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error-message';
+            errorDiv.textContent = message;
+            document.body.appendChild(errorDiv);
+            setTimeout(() => errorDiv.remove(), 5000);
+        }
+
+        /**
+         * 【8.3】隐藏加载动画
+         * @description 隐藏页面加载时的遮罩层和加载动画
+         */
+        function hideLoading() {
+            const overlay = document.getElementById('loading-overlay');
+            if (overlay) {
+                overlay.style.display = 'none';
+            }
+        }
+
+        /**
+         * 【8.4】将公里转换为地图像素半径
+         * @param {number} km - 公里数
+         * @param {number} lat - 纬度
+         * @param {object} map - Leaflet 地图实例
+         * @returns {number} 像素半径
+         * @description 根据地图缩放级别和纬度计算像素半径
+         */
+        function kmToPixelRadius(km, lat, map) {
+            var zoom = map.getZoom();
+            var metersPerPixel = 40075016.686 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom + 8);
+            var kmPerPixel = metersPerPixel / 1000;
+            return km / kmPerPixel;
+        }
+
+        // ============================================================
+        // 【2】数据加载 - 加载车次数据
+        // ============================================================
+        
+        /**
+         * 【2.1】加载车次数据
+         * @returns {object|array} 单个车次数据对象或车次数据数组
+         * @description 
+         *   - 从 URL 参数获取车次编号 (?no=车次编号)
+         *   - 支持多车次同时加载 (?no=车次1,车次2)
+         *   - 支持模糊匹配（不带日期前缀）
+         *   - 未指定车次时返回默认 G80 数据
+         * @example
+         *   loadTrainData() // 根据URL参数加载车次数据
+         */
+        function loadTrainData() {
+            const noParam = getUrlParam('no');
+            
+            if (!noParam) {
+                console.log('未指定车次参数，使用默认G80数据');
+                return DEFAULT_TRAIN_DATA;
+            }
+            
+            const trainKeys = noParam.split(',').map(key => key.replace(/\.(json|js)$/, ''));
+            
+            if (trainKeys.length === 1) {
+                const trainKey = trainKeys[0];
+                
+                if (TRAIN_DATA[trainKey]) {
+                    console.log('加载成功:', trainKey, TRAIN_DATA[trainKey].train_name);
+                    return TRAIN_DATA[trainKey];
+                }
+                
+                const datePattern = /^\d{8}-/;
+                if (!datePattern.test(trainKey)) {
+                    const matchingKeys = Object.keys(TRAIN_DATA)
+                        .filter(key => key.endsWith(`-${trainKey}`))
+                        .sort((a, b) => {
+                            const dateA = a.split('-')[0];
+                            const dateB = b.split('-')[0];
+                            return dateB.localeCompare(dateA);
+                        });
+                    
+                    if (matchingKeys.length > 0) {
+                        const latestKey = matchingKeys[0];
+                        console.log(`模糊匹配: ${trainKey} -> ${latestKey}`, TRAIN_DATA[latestKey].train_name);
+                        return TRAIN_DATA[latestKey];
+                    }
+                }
+                
+                console.error('未找到车次数据:', trainKey);
+                showError(`未找到车次数据: ${trainKey}，使用默认G80数据`);
+                return DEFAULT_TRAIN_DATA;
+            } else {
+                const trainDataList = trainKeys
+                    .map(key => {
+                        if (TRAIN_DATA[key]) {
+                            console.log('加载成功:', key, TRAIN_DATA[key].train_name);
+                            return TRAIN_DATA[key];
+                        }
+                        
+                        const datePattern = /^\d{8}-/;
+                        if (!datePattern.test(key)) {
+                            const matchingKeys = Object.keys(TRAIN_DATA)
+                                .filter(k => k.endsWith(`-${key}`))
+                                .sort((a, b) => {
+                                    const dateA = a.split('-')[0];
+                                    const dateB = b.split('-')[0];
+                                    return dateB.localeCompare(dateA);
+                                });
+                            
+                            if (matchingKeys.length > 0) {
+                                const latestKey = matchingKeys[0];
+                                console.log(`模糊匹配: ${key} -> ${latestKey}`, TRAIN_DATA[latestKey].train_name);
+                                return TRAIN_DATA[latestKey];
+                            }
+                        }
+                        
+                        console.error('未找到车次数据:', key);
+                        return null;
+                    })
+                    .filter(data => data !== null);
+                
+                if (trainDataList.length === 0) {
+                    showError('未找到任何有效的车次数据，使用默认G80数据');
+                    return DEFAULT_TRAIN_DATA;
+                }
+                
+                return trainDataList;
+            }
+        }
+
+        /**
+         * 【4.1】获取站点坐标
+         * @param {string} stationName - 站点名称
+         * @returns {array} 坐标数组 [纬度, 经度, 高亮半径km]
+         * @description 从站点坐标映射表中获取站点坐标，未找到则返回默认坐标
+         */
+        function getStationCoordinates(stationName) {
+            return STATION_COORDINATES[stationName] || DEFAULT_COORDINATE;
+        }
+
+        /**
+         * 【4.1.1】判断站点是否有真实坐标
+         * @param {string} stationName - 站点名称
+         * @returns {boolean} 坐标表中存在该站点时返回 true
+         * @description 缺坐标站点不渲染标记/标签，也不参与路线连线与视野计算，避免堆叠到默认坐标
+         */
+        function hasStationCoordinates(stationName) {
+            return Object.prototype.hasOwnProperty.call(STATION_COORDINATES, stationName);
+        }
+
+        /**
+         * 【4.1.2】收集并提示缺坐标站点（同一批次只提示一次）
+         * @param {array} trainDataList - 车次数据数组
+         * @description 缺坐标站点在时刻表正常显示，但地图上跳过渲染
+         */
+        const warnedMissingStations = new Set();
+        function warnMissingStations(trainDataList) {
+            const missing = [];
+            trainDataList.forEach(trainData => {
+                (trainData.stations || []).forEach(station => {
+                    const name = station.stationName;
+                    if (!hasStationCoordinates(name) && !warnedMissingStations.has(name)) {
+                        warnedMissingStations.add(name);
+                        missing.push(name);
+                    }
+                });
+            });
+            if (missing.length > 0) {
+                console.warn(`以下站点缺少坐标，地图已跳过渲染（时刻表不受影响）: ${missing.join('、')}`);
+            }
+        }
+
+        /**
+         * 【4.2】添加城市区域高亮
+         * @param {object} station - 站点数据对象
+         * @param {number} index - 站点索引
+         * @param {number} totalStations - 总站点数
+         * @param {string} color - 高亮颜色，默认 '#f1c40f'
+         * @description 在地图上添加城市高亮圆圈和标签
+         */
+        function addCityHighlight(station, index, totalStations, color = '#f1c40f') {
+            if (!hasStationCoordinates(station.stationName)) return;
+
+            const coords = getStationCoordinates(station.stationName);
+            const lat = coords[0];
+            const lng = coords[1];
+            const kmRadius = coords[2];
+            
+            const stationNumber = index + 1;
+            const name = station.stationName + " (" + stationNumber + "/" + totalStations + ")";
+            
+            const isStart = index === 0;
+            const isEnd = index === totalStations - 1;
+            
+            const pixelRadius = kmToPixelRadius(kmRadius, lat, map);
+            
+            const highlightCircle = L.circle(
+                [lat, lng],
+                {
+                    radius: pixelRadius,
+                    className: "city-highlight city-highlight-pulse",
+                    fillColor: color,
+                    color: color
+                }
+            ).addTo(map);
+            
+            cityHighlights.push(highlightCircle);
+            
+            let labelClass = "city-label";
+            if (isStart) labelClass += " city-label-start";
+            else if (isEnd) labelClass += " city-label-end";
+            else labelClass += " city-label-middle";
+            
+            const labelIcon = L.divIcon({
+                className: labelClass,
+                html: name,
+                iconSize: [100, 20],
+                iconAnchor: [50, -15]
+            });
+            
+            const labelMarker = L.marker([lat, lng], {
+                icon: labelIcon,
+                interactive: false
+            }).addTo(map);
+            
+            cityLabels.push(labelMarker);
+        }
+
+        // ============================================================
+        // 【4】添加站点标记
+        // ============================================================
+        
+        /**
+         * 【4.3】添加站点标记
+         * @param {object} station - 站点数据对象
+         * @param {number} index - 站点索引
+         * @param {object} trainData - 车次数据对象
+         * @description 在地图上添加站点标记，绑定弹窗和工具提示
+         */
+        function addStationMarker(station, index, trainData) {
+            if (!hasStationCoordinates(station.stationName)) return;
+
+            const coords = getStationCoordinates(station.stationName);
+            const lat = coords[0];
+            const lng = coords[1];
+            
+            const totalStations = trainData.stations.length;
+            const isStart = index === 0;
+            const isEnd = index === totalStations - 1;
+            
+            const marker = L.marker([lat, lng]).addTo(map);
+            
+            const popup = L.popup({
+                maxWidth: 280,
+                autoPan: true,
+                autoPanPadding: [20, 20]
+            });
+            
+            const arriveTime = isStart ? "起始站" : station.arrivalTime;
+            const departTime = isEnd ? "终点站" : station.departureTime;
+            
+            const popupContent = `
+                <div class="train-popup">
+                    <b>🚄 ${trainData.train_no} - ${station.stationName}</b><br>
+                    <div class="station-name">📍 途经城市：${station.stationName}</div>
+                    <div class="time-info">到达：${arriveTime}</div>
+                    <div class="time-info">发车：${departTime}</div>
+                </div>
+            `;
+            
+            popup.setContent(popupContent);
+            marker.bindPopup(popup);
+            
+            marker.bindTooltip(
+                `<div class="station-tooltip">${station.stationName}</div>`,
+                { sticky: true, direction: "top" }
+            );
+            
+            stationMarkers.push(marker);
+        }
+
+        // ============================================================
+        // 【4】绘制路线
+        // ============================================================
+        
+        /**
+         * 【4.4】绘制路线
+         * @param {object} trainData - 车次数据对象
+         * @param {string} color - 路线颜色，默认 '#3498db'
+         * @description 在地图上绘制车次路线，绑定弹窗和工具提示
+         */
+        function drawRoute(trainData, color = '#3498db') {
+            const routeStations = trainData.stations.filter(
+                station => hasStationCoordinates(station.stationName)
+            );
+            if (routeStations.length < 2) return;
+
+            const routeCoordinates = routeStations.map(station => {
+                const coords = getStationCoordinates(station.stationName);
+                return [coords[0], coords[1]];
+            });
+            
+            const routeLineItem = L.polyline(
+                routeCoordinates,
+                {
+                    color: color,
+                    opacity: 0.9,
+                    weight: 5,
+                    smoothFactor: 2.0,
+                    className: "route-main"
+                }
+            ).addTo(map);
+            
+            routeLines.push(routeLineItem);
+            
+            const routePopup = L.popup({ maxWidth: 280 });
+            
+            const totalStations = trainData.stations.length;
+            const startStation = trainData.stations[0].stationName;
+            const endStation = trainData.stations[totalStations - 1].stationName;
+            
+            const routePopupContent = `
+                <div class="route-popup">
+                    <div class="route-title">🚄 ${trainData.train_no}次高铁</div>
+                    <div class="route-info">
+                        ${startStation} → ${endStation}<br>
+                        ${trainData.depart_date} | ${totalStations}个途经城市
+                    </div>
+                </div>
+            `;
+            
+            routePopup.setContent(routePopupContent);
+            routeLineItem.bindPopup(routePopup);
+            
+            routeLineItem.bindTooltip(
+                `<div>${trainData.train_no}次线路</div>`,
+                { sticky: true, direction: "bottom" }
+            );
+        }
+
+        // ============================================================
+        // 【4】清除地图元素
+        // ============================================================
+        
+        /**
+         * 【4.5】清除地图元素
+         * @description 清除地图上的所有城市高亮、标签、站点标记和路线
+         */
+        function clearMapElements() {
+            cityHighlights.forEach(item => map.removeLayer(item));
+            cityLabels.forEach(item => map.removeLayer(item));
+            stationMarkers.forEach(item => map.removeLayer(item));
+            routeLines.forEach(item => map.removeLayer(item));
+            
+            cityHighlights = [];
+            cityLabels = [];
+            stationMarkers = [];
+            routeLines = [];
+        }
+
+        // ============================================================
+        // 【4】路线渲染 - 渲染单车次数据
+        // ============================================================
+        
+        /**
+         * 【4.6】渲染单车次数据
+         * @param {object} trainData - 车次数据对象
+         * @description 渲染单个车次的路线、站点和时刻表，并调整地图视野
+         */
+        function renderTrainData(trainData) {
+            clearMapElements();
+            
+            currentTrainData = trainData;
+            const totalStations = trainData.stations.length;
+            
+            document.title = `${trainData.train_no}高铁路线图`;
+            
+            warnMissingStations([trainData]);
+
+            trainData.stations.forEach((station, index) => {
+                addCityHighlight(station, index, totalStations);
+                addStationMarker(station, index, trainData);
+            });
+            
+            drawRoute(trainData);
+            
+            renderTimetable([trainData]);
+            
+            const allStationPoints = trainData.stations
+                .filter(station => hasStationCoordinates(station.stationName))
+                .map(station => {
+                    const coords = getStationCoordinates(station.stationName);
+                    return L.latLng(coords[0], coords[1]);
+                });
+
+            if (allStationPoints.length === 0) return;
+            
+            const bounds = L.latLngBounds(allStationPoints);
+            const paddingValue = window.innerWidth < 768 ? [30, 30] : [50, 50];
+            
+            map.fitBounds(bounds, {
+                padding: paddingValue,
+                maxZoom: 10
+            });
+        }
+        
+        // ============================================================
+        // 【4】路线渲染 - 渲染多车次数据
+        // ============================================================
+        
+        /**
+         * 【4.7】渲染多车次数据
+         * @param {array} trainDataList - 车次数据数组
+         * @param {boolean} renderTimetableAlso - 是否同时渲染时刻表，默认 true
+         * @description 渲染多个车次的路线、站点，使用不同颜色区分
+         */
+        function renderMultipleTrains(trainDataList, renderTimetableAlso = true) {
+            clearMapElements();
+            
+            currentTrainData = trainDataList[0];
+            
+            const trainNames = trainDataList.map(t => t.train_no).join('、');
+            document.title = `${trainNames}次高铁路线图`;
+            
+            visibleTrainKeys = trainDataList.map(trainData => 
+                `${trainData.depart_date.replace(/-/g, '')}-${trainData.train_no}`
+            );
+            
+            const allStationPoints = [];
+            
+            const colors = ['#3498db', '#e74c3c', '#27ae60', '#9b59b6', '#f39c12', '#1abc9c'];
+            
+            warnMissingStations(trainDataList);
+
+            trainDataList.forEach((trainData, trainIndex) => {
+                const totalStations = trainData.stations.length;
+                const color = colors[trainIndex % colors.length];
+                
+                trainData.stations.forEach((station, index) => {
+                    addCityHighlight(station, index, totalStations, color);
+                    addStationMarker(station, index, trainData, color);
+                });
+                
+                drawRoute(trainData, color);
+                
+                trainData.stations
+                    .filter(station => hasStationCoordinates(station.stationName))
+                    .forEach(station => {
+                        const coords = getStationCoordinates(station.stationName);
+                        allStationPoints.push(L.latLng(coords[0], coords[1]));
+                    });
+            });
+            
+            if (renderTimetableAlso) {
+                renderTimetable(trainDataList);
+            }
+            
+            if (allStationPoints.length > 0) {
+                const bounds = L.latLngBounds(allStationPoints);
+                const paddingValue = window.innerWidth < 768 ? [30, 30] : [50, 50];
+                
+                map.fitBounds(bounds, {
+                    padding: paddingValue,
+                    maxZoom: 10
+                });
+            }
+        }
+        
+        // ============================================================
+        // 【5】渲染时刻表面板
+        // ============================================================
+        function renderTimetable(trainDataList) {
+            const trainNoEl = document.getElementById('timetable-train-no');
+            const trainDateEl = document.getElementById('timetable-train-date');
+            const tbody = document.getElementById('timetable-tbody');
+            
+            if (trainDataList.length === 1) {
+                trainNoEl.textContent = trainDataList[0].train_no;
+                trainDateEl.textContent = trainDataList[0].depart_date;
+            } else {
+                const trainNos = trainDataList.map(t => t.train_no).join('、');
+                trainNoEl.textContent = `${trainNos} (${trainDataList.length}趟)`;
+                trainDateEl.textContent = '';
+            }
+            
+            tbody.innerHTML = '';
+            
+            const colors = ['#3498db', '#e74c3c', '#27ae60', '#9b59b6', '#f39c12', '#1abc9c'];
+            
+            trainDataList.forEach((trainData, trainIndex) => {
+                const color = colors[trainIndex % colors.length];
+                const stations = trainData.stations || [];
+                const totalStations = stations.length;
+                const trainKey = `${trainData.depart_date.replace(/-/g, '')}-${trainData.train_no}`;
+                const isVisible = visibleTrainKeys.includes(trainKey);
+                
+                const headerRow = document.createElement('tr');
+                headerRow.className = 'train-section-header';
+                headerRow.style.background = color;
+                headerRow.style.color = 'white';
+                headerRow.dataset.trainIndex = trainIndex;
+                headerRow.dataset.trainKey = trainKey;
+                
+                headerRow.innerHTML = `
+                    <td colspan="5">
+                        <input type="checkbox" class="train-section-checkbox" ${isVisible ? 'checked' : ''} onchange="toggleTrainOnMap(${trainIndex}, this.checked, event)">
+                        <span class="train-section-title">${trainData.train_no}次 - ${trainData.train_name}</span>
+                        <button class="train-section-toggle" onclick="toggleTrainSection(${trainIndex}, event)">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(headerRow);
+                
+                stations.forEach((station, index) => {
+                    const row = document.createElement('tr');
+                    row.className = `train-section-row-${trainIndex}`;
+                    row.style.display = 'none';
+                    
+                    if (index === 0) {
+                        row.classList.add('start-station');
+                    } else if (index === totalStations - 1) {
+                        row.classList.add('end-station');
+                    }
+                    
+                    const arrivalTime = station.arrivalTime || '-';
+                    const departureTime = station.departureTime || '-';
+                    const stopTime = station.stopTime || '-';
+                    
+                    row.innerHTML = `
+                        <td>${station.stationNo}</td>
+                        <td class="station-name">${station.stationName}</td>
+                        <td class="time">${arrivalTime}</td>
+                        <td class="time">${departureTime}</td>
+                        <td class="stop-time">${stopTime}</td>
+                    `;
+                    
+                    tbody.appendChild(row);
+                });
+            });
+        }
+        
+        // ============================================================
+        // 【5】切换车次在地图上的显示（不影响车次列表）
+        // ============================================================
+        
+        /**
+         * 【5.1】切换车次在地图上的显示
+         * @param {number} trainIndex - 车次索引
+         * @param {boolean} isChecked - 是否选中
+         * @param {object} event - 事件对象
+         * @description 切换车次在地图上的显示状态，不影响车次列表选择
+         */
+        function toggleTrainOnMap(trainIndex, isChecked, event) {
+            event.stopPropagation();
+            
+            const headerRow = document.querySelector(`tr.train-section-header[data-train-index="${trainIndex}"]`);
+            const trainKey = headerRow.dataset.trainKey;
+            
+            if (isChecked) {
+                if (!visibleTrainKeys.includes(trainKey)) {
+                    visibleTrainKeys.push(trainKey);
+                }
+            } else {
+                const index = visibleTrainKeys.indexOf(trainKey);
+                if (index > -1) {
+                    visibleTrainKeys.splice(index, 1);
+                }
+            }
+            
+            const trainDataList = visibleTrainKeys
+                .map(key => TRAIN_DATA[key])
+                .filter(data => data);
+            
+            if (trainDataList.length > 0) {
+                renderMultipleTrains(trainDataList, false);
+            } else {
+                clearMapElements();
+            }
+        }
+        
+        // ============================================================
+        // 【5】折叠/展开单个车次时刻表
+        // ============================================================
+        
+        /**
+         * 【5.2】折叠/展开单个车次时刻表
+         * @param {number} trainIndex - 车次索引
+         * @param {object} event - 事件对象
+         * @description 切换单个车次时刻表的折叠/展开状态
+         */
+        function toggleTrainSection(trainIndex, event) {
+            event.stopPropagation();
+            
+            const sectionRows = document.querySelectorAll(`.train-section-row-${trainIndex}`);
+            const headerRow = document.querySelector(`tr.train-section-header[data-train-index="${trainIndex}"]`);
+            const toggleBtn = headerRow.querySelector('.train-section-toggle i');
+            
+            const isCollapsed = toggleBtn.className.includes('fa-chevron-right');
+            
+            sectionRows.forEach(row => {
+                row.style.display = isCollapsed ? '' : 'none';
+            });
+            
+            toggleBtn.className = isCollapsed ? 'fas fa-chevron-down' : 'fas fa-chevron-right';
+        }
+        
+        // ============================================================
+        // 【5】折叠/展开时刻表面板
+        // ============================================================
+        
+        /**
+         * 【5.3】折叠/展开时刻表面板
+         * @description 切换整个时刻表面板的折叠/展开状态
+         */
+        function toggleTimetable() {
+            const body = document.getElementById('timetable-body');
+            const btn = document.getElementById('timetable-toggle-btn');
+            
+            if (body.classList.contains('collapsed')) {
+                body.classList.remove('collapsed');
+                btn.innerHTML = '<i class="fas fa-chevron-up"></i>';
+            } else {
+                body.classList.add('collapsed');
+                btn.innerHTML = '<i class="fas fa-chevron-down"></i>';
+            }
+        }
+
+        // ============================================================
+        // 【1】初始化地图
+        // ============================================================
+        
+        /**
+         * 【1.1】初始化地图
+         * @description 初始化 Leaflet 地图，配置地图控件和图层
+         */
+        function initMap() {
+            map = L.map("map", {
+                center: [34.0, 116.0],
+                crs: L.CRS.EPSG3857,
+                zoom: 6,
+                minZoom: 4,
+                maxZoom: 16,
+                zoomControl: false,
+                preferCanvas: true,
+                tap: true,
+                tapTolerance: 15,
+                trackResize: true,
+                scrollWheelZoom: true
+            });
+            
+            const customZoomControl = L.control({position: 'bottomright'});
+            customZoomControl.onAdd = function(map) {
+                const container = L.DomUtil.create('div', 'leaflet-control-custom-zoom');
+                
+                const switchBtn = L.DomUtil.create('button', 'switch-btn', container);
+                switchBtn.innerHTML = '<i class="fas fa-exchange-alt"></i>';
+                switchBtn.title = '切换车次';
+                
+                const divider = L.DomUtil.create('div', 'divider', container);
+                divider.style.cssText = 'height: 1px; background: #e9ecef; margin: 2px 0;';
+                
+                const zoomInBtn = L.DomUtil.create('button', 'zoom-btn zoom-btn-zoom-in', container);
+                zoomInBtn.innerHTML = '+';
+                zoomInBtn.title = '放大';
+                
+                const zoomOutBtn = L.DomUtil.create('button', 'zoom-btn zoom-btn-zoom-out', container);
+                zoomOutBtn.innerHTML = '-';
+                zoomOutBtn.title = '缩小';
+                
+                L.DomEvent.disableClickPropagation(container);
+                L.DomEvent.disableScrollPropagation(container);
+                
+                L.DomEvent.on(switchBtn, 'click', L.DomEvent.stopPropagation);
+                L.DomEvent.on(switchBtn, 'click', L.DomEvent.preventDefault);
+                L.DomEvent.on(switchBtn, 'click', () => showTrainListModal());
+                
+                L.DomEvent.on(zoomInBtn, 'click', L.DomEvent.stopPropagation);
+                L.DomEvent.on(zoomInBtn, 'click', L.DomEvent.preventDefault);
+                L.DomEvent.on(zoomInBtn, 'click', () => map.zoomIn());
+                
+                L.DomEvent.on(zoomOutBtn, 'click', L.DomEvent.stopPropagation);
+                L.DomEvent.on(zoomOutBtn, 'click', L.DomEvent.preventDefault);
+                L.DomEvent.on(zoomOutBtn, 'click', () => map.zoomOut());
+                
+                return container;
+            };
+            customZoomControl.addTo(map);
+            
+            const tileLayer = L.tileLayer(
+                "https://webrd02.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}",
+                {
+                    minZoom: 5,
+                    maxZoom: 16,
+                    maxNativeZoom: 16,
+                    noWrap: true,
+                    attribution: "高德地图",
+                    subdomains: "abc",
+                    detectRetina: true,
+                    tms: false,
+                    opacity: 1,
+                    updateWhenIdle: true
+                }
+            );
+            
+            tileLayer.addTo(map);
+        }
+
+        // ============================================================
+        // 【3】显示车次列表弹框
+        // ============================================================
+        let selectedTrainKeys = [];
+        let visibleTrainKeys = [];
+        
+        /**
+         * 【3.1】显示车次列表弹框
+         * @description 显示车次列表弹框，支持多选功能
+         */
+        function showTrainListModal() {
+            const modal = document.getElementById('train-list-modal');
+            const body = document.getElementById('train-list-body');
+            
+            body.innerHTML = '';
+            
+            const weekDays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+            
+            TRAIN_LIST.forEach((train, index) => {
+                const trainKey = `${train.depart_date.replace(/-/g, '')}-${train.train_no}`;
+                const trainData = TRAIN_DATA[trainKey];
+                
+                let stationCount = 0;
+                let duration = '';
+                
+                if (trainData && trainData.stations && trainData.stations.length > 0) {
+                    const routeParts = train.train_name.split('->');
+                    const startStationName = routeParts[0] ? routeParts[0].replace(/站$/, '') : '';
+                    const endStationName = routeParts[1] ? routeParts[1].replace(/站$/, '') : '';
+                    
+                    const stations = trainData.stations;
+                    let startIndex = -1;
+                    let endIndex = -1;
+                    
+                    for (let i = 0; i < stations.length; i++) {
+                        const stationName = stations[i].stationName.replace(/站$/, '');
+                        if (stationName === startStationName || stationName.includes(startStationName) || startStationName.includes(stationName)) {
+                            startIndex = i;
+                        }
+                        if (stationName === endStationName || stationName.includes(endStationName) || endStationName.includes(stationName)) {
+                            endIndex = i;
+                        }
+                    }
+                    
+                    if (startIndex >= 0 && endIndex >= 0 && startIndex <= endIndex) {
+                        stationCount = endIndex - startIndex + 1;
+                        
+                        const startStation = stations[startIndex];
+                        const endStation = stations[endIndex];
+                        
+                        const departTime = startStation.departureTime;
+                        const arriveTime = endStation.arrivalTime;
+                        
+                        if (departTime && arriveTime && departTime !== '起始站' && arriveTime !== '终点站') {
+                            const [depH, depM] = departTime.split(':').map(Number);
+                            const [arrH, arrM] = arriveTime.split(':').map(Number);
+                            
+                            let totalMinutes = (arrH * 60 + arrM) - (depH * 60 + depM);
+                            if (totalMinutes < 0) totalMinutes += 24 * 60;
+                            
+                            const hours = Math.floor(totalMinutes / 60);
+                            const minutes = totalMinutes % 60;
+                            
+                            if (hours > 0) {
+                                duration = `（${stationCount}站，${hours}小时${minutes}分钟）`;
+                            } else {
+                                duration = `（${stationCount}站，${minutes}分钟）`;
+                            }
+                        }
+                    } else {
+                        stationCount = stations.length;
+                        
+                        const firstStation = stations[0];
+                        const lastStation = stations[stationCount - 1];
+                        
+                        const departTime = firstStation.departureTime;
+                        const arriveTime = lastStation.arrivalTime;
+                        
+                        if (departTime && arriveTime && departTime !== '起始站' && arriveTime !== '终点站') {
+                            const [depH, depM] = departTime.split(':').map(Number);
+                            const [arrH, arrM] = arriveTime.split(':').map(Number);
+                            
+                            let totalMinutes = (arrH * 60 + arrM) - (depH * 60 + depM);
+                            if (totalMinutes < 0) totalMinutes += 24 * 60;
+                            
+                            const hours = Math.floor(totalMinutes / 60);
+                            const minutes = totalMinutes % 60;
+                            
+                            if (hours > 0) {
+                                duration = `（${stationCount}站，${hours}小时${minutes}分钟）`;
+                            } else {
+                                duration = `（${stationCount}站，${minutes}分钟）`;
+                            }
+                        }
+                    }
+                }
+                
+                const date = new Date(train.depart_date);
+                const weekDay = weekDays[date.getDay()];
+                const dateStr = `${train.depart_date} ${weekDay}`;
+                
+                const item = document.createElement('div');
+                item.className = 'train-item';
+                item.dataset.trainKey = trainKey;
+                
+                const isChecked = selectedTrainKeys.includes(trainKey);
+                
+                item.innerHTML = `
+                    <div class="train-item-checkbox">
+                        <input type="checkbox" id="train-${index}" value="${trainKey}" ${isChecked ? 'checked' : ''}>
+                    </div>
+                    <div class="train-item-content">
+                        <div class="train-item-date">${dateStr}</div>
+                        <div class="train-item-info">
+                            <span class="train-item-no">${train.train_no}</span>
+                            <span class="train-item-route">${train.train_name} ${duration}</span>
+                            <span class="train-item-time">${train.depart_time}</span>
+                        </div>
+                    </div>
+                `;
+                
+                item.onclick = (e) => {
+                    if (e.target.tagName !== 'INPUT') {
+                        const checkbox = item.querySelector('input[type="checkbox"]');
+                        checkbox.checked = !checkbox.checked;
+                    }
+                    updateSelectedTrainKeys();
+                };
+                
+                body.appendChild(item);
+            });
+            
+            modal.classList.add('show');
+        }
+        
+        // ============================================================
+        // 【3】更新选中的车次列表
+        // ============================================================
+        
+        /**
+         * 【3.2】更新选中的车次列表
+         * @description 根据复选框状态更新选中的车次列表，并重新渲染地图
+         */
+        function updateSelectedTrainKeys() {
+            const checkboxes = document.querySelectorAll('#train-list-body input[type="checkbox"]:checked');
+            selectedTrainKeys = Array.from(checkboxes).map(cb => cb.value);
+            
+            const trainDataList = selectedTrainKeys
+                .map(key => TRAIN_DATA[key])
+                .filter(data => data);
+            
+            if (trainDataList.length > 0) {
+                renderMultipleTrains(trainDataList);
+                
+                const newUrl = new URL(window.location);
+                newUrl.searchParams.set('no', selectedTrainKeys.join(','));
+                window.history.pushState({}, '', newUrl);
+            } else {
+                clearMapElements();
+            }
+        }
+
+        // ============================================================
+        // 【3】关闭车次列表弹框
+        // ============================================================
+        
+        /**
+         * 【3.3】关闭车次列表弹框
+         * @description 关闭车次列表弹框
+         */
+        function closeTrainListModal() {
+            const modal = document.getElementById('train-list-modal');
+            modal.classList.remove('show');
+        }
+
+        // ============================================================
+        // 【2】数据加载 - 从 Supabase 加载车次数据
+        // ============================================================
+        
+        /**
+         * 【2.2】从 Supabase 加载车次数据
+         * @returns {Promise<boolean>} 加载成功返回 true，失败返回 false
+         * @description 从 Supabase 数据库加载最近 10 条车次数据
+         */
+        async function fetchTrainData() {
+            try {
+                const { data, error } = await supabaseClient
+                    .from('train_schedules')
+                    .select('id, train_no, train_name, depart_date, ticket_checkpoint, seat, stations, created_at, updated_at')
+                    .order('depart_date', { ascending: false })
+                    .limit(10);
+                
+                if (error) {
+                    console.error('从 Supabase 获取数据失败:', error);
+                    return false;
+                }
+                
+                if (!data || data.length === 0) {
+                    console.warn('Supabase 返回空数据');
+                    return false;
+                }
+                
+                TRAIN_DATA = {};
+                TRAIN_LIST = [];
+                
+                data.forEach(train => {
+                    const key = `${train.depart_date.replace(/-/g, '')}-${train.train_no}`;
+                    TRAIN_DATA[key] = {
+                        train_no: train.train_no,
+                        train_name: train.train_name,
+                        depart_date: train.depart_date,
+                        stations: train.stations || []
+                    };
+                    
+                    const firstStation = train.stations && train.stations[0];
+                    TRAIN_LIST.push({
+                        train_no: train.train_no,
+                        train_name: train.train_name,
+                        depart_date: train.depart_date,
+                        depart_time: firstStation ? firstStation.departureTime : ''
+                    });
+                });
+                
+                console.log(`从 Supabase 加载 ${Object.keys(TRAIN_DATA).length} 条车次数据`);
+                return true;
+            } catch (err) {
+                console.error('加载车次数据异常:', err);
+                return false;
+            }
+        }
+
+        // ============================================================
+        // 【7】交互处理 - 主函数
+        // ============================================================
+        
+        /**
+         * 【7.1】主函数
+         * @description 初始化地图，加载车次数据，渲染路线和时刻表
+         */
+        async function main() {
+            try {
+                initMap();
+                
+                const loadSuccess = await fetchTrainData();
+                if (!loadSuccess) {
+                    console.warn('从 Supabase 加载数据失败，将使用默认数据');
+                }
+                
+                const trainData = loadTrainData();
+                
+                if (Array.isArray(trainData)) {
+                    renderMultipleTrains(trainData);
+                } else {
+                    renderTrainData(trainData);
+                }
+                
+                hideLoading();
+            } catch (error) {
+                console.error('初始化失败:', error);
+                showError('页面初始化失败，请刷新重试');
+                hideLoading();
+            }
+        }
+
+        /**
+         * 【7.2】页面加载完成事件处理
+         * @description 页面加载完成后执行主函数
+         */
+        document.addEventListener('DOMContentLoaded', main);
+    </script>
+</body>
+</html>

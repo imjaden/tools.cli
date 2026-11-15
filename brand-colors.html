@@ -1,0 +1,1087 @@
+<!--
+===========================================================================
+Karpathy Principles - AI编程四大原则
+===========================================================================
+1. 先思考 - 不假设，不隐藏困惑 → 不确定就问，多种解释列出
+2. 保持简单 - 最小代码解决问题 → 无多余抽象
+3. 精准修改 - 只改必须改的 → 不"顺便"改进邻接代码
+4. 目标驱动 - 测试先行，验证闭环 → "修bug"→"写测试复现→让测试通过"
+
+Version: 1.4(2026-11-06)
+Description
+- 品牌配色体系展示页：三配色体系（经典艺术色系 + 食材自然色系 + 彩虹七色），条目名格式「序号 中文名 英文名」空格分隔
+- v1.4 新增「彩虹七色」tab（ROYGBIV：红/橙/黄/绿/蓝/靛/紫，靛蓝 #3F2A6E 深靛波段）
+- v1.3 两体系条目重排（用户指定顺序）+ 名称键空格分隔
+- v1.2 新增「食材自然色系」：Pantone 食材色卡 6 色（菠菜/紫叶菜/红洋葱/蘑菇/胡萝卜/红辣椒）
+- v1.2 原始 JSON 由 Tab 改为右上角「源码」浮动按钮，弹出面板宽 80%、高 90%，内容跟随当前激活体系
+- v1.1 新增「列表背景」色板：低饱和浅色（明度统一、色环均匀分布），供图片/视频/菜单列表按 index % N 循环取色
+- 四面板（经典艺术色系/食材自然色系/彩虹七色/列表背景）切换，Bootstrap + Font Awesome
+
+【功能清单】
+| 功能 | 说明 |
+|------|------|
+| 经典艺术色系 | classic 面板展示 10 色经典艺术色（用户指定排序） |
+| 食材自然色系 | food 面板展示 6 色 Pantone 食材色卡（用户指定排序） |
+| 彩虹七色 | rainbow 面板展示 7 色光谱色（ROYGBIV） |
+| 源码查看 | 右上角「源码」浮动按钮弹出当前体系 JSON（80%×90%），支持拷贝、ESC/遮罩关闭 |
+| 复制颜色 | 点击颜色复制到剪贴板，toast 提示 |
+| 列表背景色板 | listbg 面板展示 10 色浅色板 + 图片/视频/菜单三种场景循环预览 |
+| 整组复制 | 一键拷贝列表背景色板的 JS 数组 |
+
+【辅助工具】
+| 工具方法 | 功能说明 |
+|---------|---------|
+| getContrastColor(hexColor) | 计算前景对比色（亮度公式） |
+| copyToClipboard(text, btn) | 复制颜色到剪贴板并 toast 提示 |
+| copyTextCL050(text, onOk, onFail) | 剪贴板写入（能力判断 + execCommand 回退） |
+
+Related Paths
+- 项目根目录: ~/CodeSpace/script-miner
+- 页面目录: ~/CodeSpace/script-miner/projects/single-pages
+
+Environments:
+- Mac MacBookPro-2025-26.5-25F71
+- IDE TRAE CN 版本
+
+Dependency
+- Bootstrap 5.3.0 (CDN引入)
+- Font Awesome 4.7.0 (CDN引入)
+
+Sublime Text
+- Command + k, Command + 1 收缩所有函数代码
+- Command + k, Command + j 展示所有函数代码
+-->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <link rel="canonical" href="https://tools.cli.jaden.tech/brand-colors.html">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>品牌配色体系</title>
+    <!-- 引入 Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- 引入 Font Awesome 图标 -->
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <style>
+        /* 基础样式重置 */
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh; /* 占满整个视口高度 */
+            display: flex;
+            flex-direction: column;
+            /*overflow: hidden;*/
+        }
+
+        /* 颜色行容器 */
+        .colors-container {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            overflow-y: auto; /* 添加垂直滚动条 */
+            padding: 1rem;
+        }
+
+        /* 滚动条样式优化 */
+        .colors-container::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .colors-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        .colors-container::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+
+        .colors-container::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        /* 颜色行样式 */
+        .color-row {
+            padding: 1rem;
+            margin-bottom: 0.5rem;
+            border-radius: 6px;
+            display: flex;
+            flex-direction: column;
+            transition: all 0.3s ease;
+        }
+
+        /* 顶部信息行（颜色名、色值、RGB） */
+        .color-header {
+            display: flex;
+            justify-content: space-between; /* 颜色名居左，色值区域居右 */
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        /* 颜色名称样式 */
+        .color-name {
+            font-weight: 700;
+            font-size: 1.1rem;
+            white-space: nowrap;
+        }
+
+        /* 色值和RGB容器 */
+        .color-values {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        /* 色值和RGB文本样式 */
+        .color-code {
+            font-weight: 500;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+
+        /* 拷贝按钮样式 */
+        .copy-btn {
+            border: none;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 0.85rem;
+        }
+
+        /* 描述信息区域 */
+        .color-description {
+            /*overflow: hidden;*//* 隐藏溢出内容 */
+            /*text-overflow: ellipsis;*/
+            line-height: 1.5;
+        }
+
+        /* 描述文本样式 */
+        .description-text {
+            font-size: 0.9rem;
+        }
+
+        /* Tab 导航样式 */
+        .nav-tabs {
+            border-bottom: 1px solid #dee2e6;
+            background-color: #f8f9fa;
+        }
+
+        .nav-tabs .nav-item .nav-link {
+            border-radius: 0;
+            margin-bottom: -1px;
+        }
+
+        .nav-tabs .nav-item .nav-link.active {
+            color: #0d6efd;
+            background-color: #fff;
+            border-color: #dee2e6 #dee2e6 #fff;
+        }
+
+        /* Tab 内容区域 */
+        .tab-content {
+            flex: 1;
+            /*overflow: hidden;*/
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 源码浮动按钮（v1.2，右上角） */
+        #source-fab {
+            position: fixed;
+            top: 0.5rem;
+            right: 0.75rem;
+            z-index: 1500;
+            border: none;
+            border-radius: 20px;
+            padding: 0.35rem 0.9rem;
+            background-color: #212529;
+            color: #fff;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+            transition: all 0.2s ease;
+        }
+
+        #source-fab:hover {
+            transform: translateY(-1px);
+            background-color: #343a40;
+        }
+
+        /* 源码面板遮罩（面板宽 80%、高 90%，v1.2） */
+        #source-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.55);
+            z-index: 2000;
+        }
+
+        #source-panel {
+            position: absolute;
+            top: 5vh;
+            left: 10vw;
+            width: 80vw;
+            height: 90vh;
+            background-color: #2d2d2d;
+            border-radius: 10px;
+            box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .source-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.6rem 1rem;
+            background-color: #1f1f1f;
+            color: #f8f9fa;
+            flex-shrink: 0;
+        }
+
+        .source-title {
+            font-weight: 700;
+        }
+
+        .source-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .source-json {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+            margin: 0;
+            font-family: monospace;
+            color: #f8f9fa;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        /* toast 高于源码遮罩，保证面板内拷贝反馈可见 */
+        .toast-container {
+            z-index: 2100;
+        }
+
+        /* ── 列表背景面板（v1.1） ── */
+        .listbg-container {
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+        }
+
+        .listbg-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .listbg-hint {
+            font-size: 0.85rem;
+            color: #6c757d;
+        }
+
+        /* 色板 chips（点击复制单色） */
+        .palette-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 6px;
+            padding: 0.3rem 0.6rem;
+            cursor: pointer;
+            background: #fff;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+
+        .chip:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+        }
+
+        .chip-swatch {
+            width: 1rem;
+            height: 1rem;
+            border-radius: 3px;
+            border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+
+        /* 场景预览区块 */
+        .scene-section {
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+        }
+
+        .scene-title {
+            font-weight: 700;
+            font-size: 1rem;
+            color: #333;
+        }
+
+        .scene-title i {
+            color: #0d6efd;
+            margin-right: 0.35rem;
+        }
+
+        /* 图片列表 mock */
+        .img-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 0.75rem;
+        }
+
+        .img-card {
+            border-radius: 8px;
+            padding: 0.9rem;
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+            border: 1px solid rgba(0, 0, 0, 0.06);
+        }
+
+        .img-card .img-icon {
+            font-size: 1.6rem;
+            opacity: 0.55;
+        }
+
+        .img-card .img-name {
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .img-card .img-meta {
+            font-size: 0.8rem;
+            color: #555;
+        }
+
+        /* 视频列表 mock */
+        .video-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .video-row {
+            display: flex;
+            align-items: center;
+            gap: 0.9rem;
+            border-radius: 8px;
+            padding: 0.6rem 0.9rem;
+            color: #333;
+            border: 1px solid rgba(0, 0, 0, 0.06);
+        }
+
+        .video-thumb {
+            position: relative;
+            width: 112px;
+            height: 66px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.12);
+            flex-shrink: 0;
+        }
+
+        .video-thumb .duration {
+            position: absolute;
+            bottom: 4px;
+            right: 4px;
+            font-size: 0.7rem;
+            background: rgba(0, 0, 0, 0.55);
+            color: #fff;
+            padding: 0 4px;
+            border-radius: 3px;
+        }
+
+        .video-info {
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+        }
+
+        .video-title {
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .video-meta {
+            font-size: 0.8rem;
+            color: #555;
+        }
+
+        /* 菜单列表 mock */
+        .menu-list {
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid rgba(0, 0, 0, 0.06);
+        }
+
+        .menu-row {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            padding: 0.7rem 1rem;
+            color: #333;
+        }
+
+        .menu-row + .menu-row {
+            border-top: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        .menu-row .fa {
+            width: 1.2rem;
+            text-align: center;
+        }
+
+        .menu-row .menu-label {
+            flex: 1;
+            font-weight: 500;
+        }
+
+        .menu-row .fa-angle-right {
+            color: #777;
+        }
+    </style>
+</head>
+<body>
+    <!-- Tab 导航 -->
+    <ul class="nav nav-tabs" id="colorTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="classic-tab" data-bs-toggle="tab" data-bs-target="#classic-panel"
+                    type="button" role="tab" aria-controls="classic-panel" aria-selected="true">
+                <i class="fa fa-paint-brush me-1"></i>经典艺术色系
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="food-tab" data-bs-toggle="tab" data-bs-target="#food-panel"
+                    type="button" role="tab" aria-controls="food-panel" aria-selected="false">
+                <i class="fa fa-cutlery me-1"></i>食材自然色系
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="rainbow-tab" data-bs-toggle="tab" data-bs-target="#rainbow-panel"
+                    type="button" role="tab" aria-controls="rainbow-panel" aria-selected="false">
+                <i class="fa fa-rainbow me-1"></i>彩虹七色
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="listbg-tab" data-bs-toggle="tab" data-bs-target="#listbg-panel"
+                    type="button" role="tab" aria-controls="listbg-panel" aria-selected="false">
+                <i class="fa fa-th-large me-1"></i>列表背景
+            </button>
+        </li>
+    </ul>
+
+    <!-- Tab 内容区域 -->
+    <div class="tab-content" id="colorsTabsContent">
+        <!-- 1. 经典艺术色系面板 -->
+        <div class="tab-pane fade show active" id="classic-panel" role="tabpanel" aria-labelledby="classic-tab">
+            <div class="colors-container" id="classic-container">
+                <!-- 颜色行将通过JS动态生成 -->
+            </div>
+        </div>
+
+        <!-- 2. 食材自然色系面板 -->
+        <div class="tab-pane fade" id="food-panel" role="tabpanel" aria-labelledby="food-tab">
+            <div class="colors-container" id="food-container">
+                <!-- 颜色行将通过JS动态生成 -->
+            </div>
+        </div>
+
+        <!-- 3. 彩虹七色色系面板 -->
+        <div class="tab-pane fade" id="rainbow-panel" role="tabpanel" aria-labelledby="rainbow-tab">
+            <div class="colors-container" id="rainbow-container">
+                <!-- 颜色行将通过JS动态生成 -->
+            </div>
+        </div>
+
+        <!-- 3. 列表背景色板面板（v1.1） -->
+        <div class="tab-pane fade" id="listbg-panel" role="tabpanel" aria-labelledby="listbg-tab">
+            <div class="listbg-container">
+                <div class="listbg-toolbar">
+                    <span class="listbg-hint">低饱和浅色板（明度统一、色环均匀分布），点击色块复制单色；场景预览按 index % N 循环取色</span>
+                    <button id="copy-array-btn" class="btn btn-sm btn-light">
+                        <i class="fa fa-list me-1"></i>拷贝整组（JS数组）
+                    </button>
+                </div>
+                <div class="palette-chips" id="palette-chips">
+                    <!-- 色板 chips 将通过JS动态生成 -->
+                </div>
+                <div class="scene-section">
+                    <div class="scene-title"><i class="fa fa-image"></i>图片列表预览</div>
+                    <div class="img-grid" id="img-grid">
+                        <!-- 图片卡片将通过JS动态生成 -->
+                    </div>
+                </div>
+                <div class="scene-section">
+                    <div class="scene-title"><i class="fa fa-play-circle"></i>视频列表预览</div>
+                    <div class="video-list" id="video-list">
+                        <!-- 视频行将通过JS动态生成 -->
+                    </div>
+                </div>
+                <div class="scene-section">
+                    <div class="scene-title"><i class="fa fa-bars"></i>菜单列表预览</div>
+                    <div class="menu-list" id="menu-list">
+                        <!-- 菜单行将通过JS动态生成 -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 源码浮动按钮（v1.2，右上角） -->
+    <button id="source-fab" title="查看当前配色体系 JSON（宽 80% / 高 90%）">
+        <i class="fa fa-code me-1"></i>源码
+    </button>
+
+    <!-- 源码弹出面板遮罩（v1.2） -->
+    <div id="source-overlay">
+        <div id="source-panel">
+            <div class="source-header">
+                <span class="source-title" id="source-panel-title">源码 · 经典艺术色系</span>
+                <div class="source-actions">
+                    <button id="copy-source-btn" class="btn btn-sm btn-outline-light">
+                        <i class="fa fa-clipboard me-1"></i>拷贝
+                    </button>
+                    <button id="source-close-btn" class="btn btn-sm btn-outline-light" title="关闭（ESC / 点击遮罩）">
+                        <i class="fa fa-times"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="source-json" id="source-json-content">
+                <!-- 当前体系 JSON 内容将通过JS动态生成 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap Toast 提示（拷贝成功/失败） -->
+    <div class="toast-container position-fixed bottom-5 end-5">
+        <div id="copy-toast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="toast-header bg-success text-white">
+                <i class="fa fa-check-circle me-2"></i>
+                <strong class="me-auto">操作结果</strong>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+            <div class="toast-body" id="toast-message">
+                内容已成功拷贝到剪贴板！
+            </div>
+        </div>
+    </div>
+
+    <!-- 引入 Bootstrap JS + Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.min.js"></script>
+    <script>
+/* ── 剪贴板（SCRIPT-MINER-CL050 canonical）：能力判断前置 + execCommand 回退 + 失败可见反馈 ── */
+function _copyFallbackCL050(text) {
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed'; ta.style.top = '-1000px'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch (e) { return false; }
+}
+function copyTextCL050(text, onOk, onFail) {
+  const settle = (r) => {
+    if (r) { if (typeof onOk === 'function') onOk(); return; }
+    if (typeof onFail === 'function') { onFail(new Error('copy failed')); return; }
+    try { if (typeof showToast === 'function') { showToast('⚠️ 复制失败，请手动选中复制'); return; } } catch (e) {}
+    try { alert('复制失败，请手动选中复制'); } catch (e) {}
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(() => settle(true)).catch(() => settle(_copyFallbackCL050(text)));
+  } else {
+    settle(_copyFallbackCL050(text));
+  }
+}
+
+        // 1. 配色体系数据（v1.4：三体系，经典+食材用户指定顺序；彩虹 ROYGBIV 光谱序；键格式「序号 中文名 英文名」）
+        const PAGE_VERSION = '1.4';
+        const colorSystems = {
+            classic: {
+                "name": "经典艺术色系",
+                "data": {
+                    "01 普鲁士蓝 Prussian Blue": {
+                        "别名": "柏林蓝、贡蓝、铁蓝、亚铁氰化铁",
+                        "用途": "一种古老的蓝色染料，可以用来上釉和做油画染料",
+                        "色值": "#003152",
+                        "RGB": "RGB (0，49，82)"
+                    },
+                    "02 马尔斯绿 Mars Green": {
+                        "由来": "2017年英国造纸商G.F Smith和英国城市文化节联合发起了「选出全世界最受欢迎的颜色」的活动，由安妮·马尔斯(Annie Marrs)提交的一种蓝绿色当选。马尔斯绿的灵感来源于Annie家乡苏格兰的泰勒河畔自然景观的一种蓝绿色调",
+                        "色值": "#01847F",
+                        "RGB": "RGB (1,132,127)"
+                    },
+                    "03 蒂芙尼蓝 Tiffany Blue": {
+                        "由来": "蒂芙尼蓝是纽约珠宝公司蒂芙尼所拥有的颜色俗称，1845年时首次用于蒂芙尼蓝书封面，此后广泛使用于该公司推广物品的材质上",
+                        "色值": "#81D8CF",
+                        "RGB": "RGB (129，216，207)"
+                    },
+                    "04 克莱因蓝 Klein Blue": {
+                        "别名": "最纯正的蓝色、理想之蓝、绝对之蓝",
+                        "由来": "因被法国艺术家伊夫·克莱因(Yves Klein)新现实主义者混合而成和首先得到专利而得名",
+                        "色值": "#002FA7",
+                        "RGB": "RGB (0，47，167)"
+                    },
+                    "05 只此青绿 Turquoise": {
+                        "由来": "在中国传统色彩青色的含义里，其以蓝色为主，也包含了绿色，黑色的一部分。青含有蓝又不同于蓝，是一种蓝绿的颜色，不是一种纯粹的蓝。中国蓝色的来源，一个是矿物色的石青，一个是植物色的靛蓝。只此青绿则将两者有机的融合在一起，起到了一定的对比，反衬的效果",
+                        "色值": "#40E0D0",
+                        "RGB": "RGB(64,224,208)"
+                    },
+                    "06 凡戴克粽 Vandyke Brown": {
+                        "别名": "凡戴棕",
+                        "由来": "凡戴克棕是一种深沉而温暖的棕色，凡·戴克在其作品中大胆运用这种颜色，创作出具有时代影响意义的画作，日后人们将凡·戴克的名字用来命名这种色彩，称之为'凡戴克棕'",
+                        "色值": "#8F4B28",
+                        "RGB": "RGB (143，75，40)"
+                    },
+                    "07 勃艮第红 Burgundy Red": {
+                        "别名": "勃艮第酒红",
+                        "由来": "因与法国勃艮第所产的勃艮第酒颜色相似而得名",
+                        "色值": "#900021",
+                        "RGB": "RGB (144，0，33)"
+                    },
+                    "08 提香红 Titian Red": {
+                        "由来": "提香是文艺复兴时期威尼斯画派的代表性人物，他非常善于处理色彩和光线，作画前通常先以红色打底，然后再涂上其他颜色，使得其油画隐约泛着微微的红润感，而这种技法也被人称为'提香红'",
+                        "色值": "#B05923",
+                        "RGB": "RGB (176，89，35)"
+                    },
+                    "09 申布伦黄 Shenbulun Yellow": {
+                        "由来": "以皇家宫殿命名的颜色，申布伦是指维也纳着名的申布伦宫，也称'美泉宫'。这一哈布斯堡王朝的绝美皇宫外墙应用了一种十分特别的黄色，后世将其称作申布伦黄",
+                        "色值": "#FBD26A",
+                        "RGB": "RGB(251，210，106)"
+                    },
+                    "10 中国红 China Red": {
+                        "别名": "朱红色",
+                        "由来": "即朱红色，是朱砂制成的一种颜色，而最纯正的朱砂出自中国，因此又名'中国红'",
+                        "象征意义": "是中国人的文化图腾和精神皈依，是中华文化的底色，象征着热忱、奋进、团结的民族品格",
+                        "色值": "#E60000",
+                        "RGB": "RGB (230，0，0)"
+                    }
+                }
+            },
+            food: {
+                "name": "食材自然色系",
+                "data": {
+                    "01 菠菜 Spinach": {
+                        "潘通色号": "PANTONE 356C",
+                        "色值": "#007A33",
+                        "RGB": "RGB (0，122，51)"
+                    },
+                    "02 胡萝卜 Carrot": {
+                        "潘通色号": "PANTONE 152",
+                        "色值": "#E57200",
+                        "RGB": "RGB (229，114，0)"
+                    },
+                    "03 紫叶菜 Purple Greens": {
+                        "潘通色号": "PANTONE 5125",
+                        "色值": "#6E395C",
+                        "RGB": "RGB (110，57，92)"
+                    },
+                    "04 蘑菇 Mushroom": {
+                        "潘通色号": "PANTONE 14-1305 TCX",
+                        "色值": "#BDACA3",
+                        "RGB": "RGB (189，172，163)"
+                    },
+                    "05 红洋葱 Red Onion": {
+                        "潘通色号": "PANTONE 7647 C",
+                        "色值": "#AE3C72",
+                        "RGB": "RGB (174，60，114)"
+                    },
+                    "06 红辣椒 Red Chili": {
+                        "潘通色号": "PANTONE 1797",
+                        "色值": "#CB333B",
+                        "RGB": "RGB (203，51，59)"
+                    }
+                }
+            },
+            rainbow: {
+                "name": "彩虹七色",
+                "data": {
+                    "01 红 Red": {
+                        "色值": "#E4002B",
+                        "RGB": "RGB (228，0，43)"
+                    },
+                    "02 橙 Orange": {
+                        "色值": "#F39800",
+                        "RGB": "RGB (243，152，0)"
+                    },
+                    "03 黄 Yellow": {
+                        "色值": "#F9E000",
+                        "RGB": "RGB (249，224，0)"
+                    },
+                    "04 绿 Green": {
+                        "色值": "#00A651",
+                        "RGB": "RGB (0，166，81)"
+                    },
+                    "05 蓝 Blue": {
+                        "色值": "#0067C5",
+                        "RGB": "RGB (0，103，197)"
+                    },
+                    "06 靛 Indigo": {
+                        "色值": "#3F2A6E",
+                        "RGB": "RGB (63，42，110)"
+                    },
+                    "07 紫 Violet": {
+                        "色值": "#8D1A97",
+                        "RGB": "RGB (141，26，151)"
+                    }
+                }
+            }
+        };
+
+        // 1.1 列表背景专用色板（v1.1）：低饱和浅色、明度统一（HSL L≈90-92%）、色环均匀分布
+        const listBgData = {
+            "01浅珊瑚Coral": {
+                "色值": "#F9D7D7",
+                "RGB": "RGB(249，215，215)"
+            },
+            "02蜜桃Peach": {
+                "色值": "#FAE6D1",
+                "RGB": "RGB(250，230，209)"
+            },
+            "03柠檬Lemon": {
+                "色值": "#F9F9D2",
+                "RGB": "RGB(249，249，210)"
+            },
+            "04嫩绿Mint Green": {
+                "色值": "#E2F6DA",
+                "RGB": "RGB(226，246，218)"
+            },
+            "05青碧Aqua": {
+                "色值": "#D7F4E6",
+                "RGB": "RGB(215，244，230)"
+            },
+            "06湖青Lake Cyan": {
+                "色值": "#D5F1F6",
+                "RGB": "RGB(213，241，246)"
+            },
+            "07雾蓝Mist Blue": {
+                "色值": "#DCE6F9",
+                "RGB": "RGB(220，230，249)"
+            },
+            "08紫藤Wisteria": {
+                "色值": "#E3D9F7",
+                "RGB": "RGB(227，217，247)"
+            },
+            "09藕紫Lotus": {
+                "色值": "#F6DAF6",
+                "RGB": "RGB(246，218，246)"
+            },
+            "10玫瑰Rose": {
+                "色值": "#F8D8E3",
+                "RGB": "RGB(248，216，227)"
+            }
+        };
+        // 色板数组（供列表按 index % N 循环取色）
+        const listBgPalette = Object.values(listBgData).map(c => c.色值);
+
+        // 场景预览 mock 数据（v1.1）
+        const imgItems = ['山间晨雾', '城市夜景', '海边日落', '森林小径', '湖面倒影', '雪山远景', '田园风光', '古镇街巷', '星空银河', '樱花时节', '沙漠驼影', '梯田晨光'];
+        const videoItems = [
+            ['第01集：入门指南', '08:36'],
+            ['第02集：核心概念', '12:04'],
+            ['第03集：实战演练', '15:27'],
+            ['第04集：进阶技巧', '09:48'],
+            ['第05集：常见问题', '06:15'],
+            ['第06集：案例复盘', '11:32'],
+            ['第07集：总结展望', '05:50']
+        ];
+        const menuItems = [
+            ['fa-home', '首页概览'],
+            ['fa-bell', '消息通知'],
+            ['fa-star', '我的收藏'],
+            ['fa-cloud-download', '下载管理'],
+            ['fa-cog', '账号设置'],
+            ['fa-sign-out', '退出登录']
+        ];
+
+        // 2. 初始化 Toast 组件
+        const toast = new bootstrap.Toast(document.getElementById('copy-toast'));
+        const toastMessage = document.getElementById('toast-message');
+
+        // 3. 计算颜色亮度，决定文字颜色（黑或白）
+        function getContrastColor(hexColor) {
+            // 移除#号
+            const hex = hexColor.replace('#', '');
+
+            // 解析RGB值
+            const r = parseInt(hex.substring(0, 2), 16);
+            const g = parseInt(hex.substring(2, 4), 16);
+            const b = parseInt(hex.substring(4, 6), 16);
+
+            // 计算亮度（使用相对亮度公式）
+            const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+
+            // 亮度大于0.5，使用黑色文字；否则使用白色文字
+            return luminance > 0.5 ? '#000000' : '#FFFFFF';
+        }
+
+        // 4. 拷贝到剪贴板函数
+        function copyToClipboard(text, btn) {
+            const originalContent = btn.innerHTML;
+
+            copyTextCL050(text, () => {
+                    // 拷贝成功：修改按钮图标和提示
+                    btn.innerHTML = '<i class="fa fa-check"></i>';
+
+                    // 显示成功提示
+                    toastMessage.textContent = `已拷贝：${text}`;
+                    toast.show();
+
+                    // 2秒后恢复按钮原始状态
+                    setTimeout(() => {
+                        btn.innerHTML = originalContent;
+                    }, 2000);
+                }, err => {
+                    // 拷贝失败提示
+                    toastMessage.textContent = `拷贝失败：${err.message}`;
+                    toast.show();
+                    console.error('拷贝失败:', err);
+                });
+        }
+
+        // 5. 渲染配色体系面板（v1.2：体系键 + 容器 id 参数化，双体系复用）
+        function renderColors(systemKey, containerId) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = ''; // 清空容器
+
+            // 遍历每个颜色，生成一行
+            Object.entries(colorSystems[systemKey].data).forEach(([colorName, colorInfo]) => {
+                // 创建颜色行
+                const colorRow = document.createElement('div');
+                colorRow.className = 'color-row';
+
+                // 设置背景色为当前颜色的色值
+                const colorValue = colorInfo.色值;
+                colorRow.style.backgroundColor = colorValue;
+
+                // 计算对比色（文字颜色）
+                const textColor = getContrastColor(colorValue);
+                colorRow.style.color = textColor;
+
+                // 创建顶部信息行（颜色名、色值、RGB）
+                const header = document.createElement('div');
+                header.className = 'color-header';
+
+                // 添加颜色名称（居左）
+                const nameElement = document.createElement('div');
+                nameElement.className = 'color-name';
+                nameElement.textContent = colorName;
+                header.appendChild(nameElement);
+
+                // 添加色值和RGB（居右）
+                const valuesContainer = document.createElement('div');
+                valuesContainer.className = 'color-values';
+
+                // 色值与拷贝按钮
+                const hexContainer = document.createElement('div');
+                hexContainer.className = 'd-flex align-items-center gap-1';
+                hexContainer.innerHTML = `
+                    <span class="color-code">${colorInfo.色值}</span>
+                    <button class="copy-btn" style="color: ${textColor}; background-color: rgba(255,255,255,0.2)"
+                            onclick="copyToClipboard('${colorInfo.色值}', this)">
+                        <i class="fa fa-clipboard"></i>
+                    </button>
+                `;
+
+                // RGB与拷贝按钮
+                const rgbContainer = document.createElement('div');
+                rgbContainer.className = 'd-flex align-items-center gap-1';
+                rgbContainer.innerHTML = `
+                    <span class="color-code">${colorInfo.RGB}</span>
+                    <button class="copy-btn" style="color: ${textColor}; background-color: rgba(255,255,255,0.2)"
+                            onclick="copyToClipboard('${colorInfo.RGB}', this)">
+                        <i class="fa fa-clipboard"></i>
+                    </button>
+                `;
+
+                valuesContainer.appendChild(hexContainer);
+                valuesContainer.appendChild(rgbContainer);
+                header.appendChild(valuesContainer);
+
+                // 创建描述信息区域（合并为一行）
+                const description = document.createElement('div');
+                description.className = 'color-description';
+
+                // 收集所有描述字段
+                const descriptionParts = [];
+                Object.entries(colorInfo).forEach(([key, value]) => {
+                    if (!['色值', 'RGB'].includes(key)) {
+                        descriptionParts.push(`${key}：${value}`);
+                    }
+                });
+
+                // 用分号拼接所有描述字段
+                const descriptionText = document.createElement('div');
+                descriptionText.className = 'description-text';
+                descriptionText.textContent = descriptionParts.join('；');
+                description.appendChild(descriptionText);
+
+                // 组装当前颜色行
+                colorRow.appendChild(header);
+                colorRow.appendChild(description);
+                container.appendChild(colorRow);
+            });
+        }
+
+        // 5.1 渲染列表背景面板（v1.1）
+        function renderListBg() {
+            // 色板 chips（点击复制单色）
+            const chips = document.getElementById('palette-chips');
+            Object.values(listBgData).forEach((info) => {
+                const chip = document.createElement('button');
+                chip.className = 'chip';
+                chip.innerHTML = `<span class="chip-swatch" style="background-color:${info.色值}"></span><span>${info.色值}</span>`;
+                chip.onclick = () => copyToClipboard(info.色值, chip);
+                chips.appendChild(chip);
+            });
+
+            // 循环取色：index % N
+            const cycle = (i) => listBgPalette[i % listBgPalette.length];
+
+            // 图片列表 mock
+            const imgGrid = document.getElementById('img-grid');
+            imgItems.forEach((name, i) => {
+                const card = document.createElement('div');
+                card.className = 'img-card';
+                card.style.backgroundColor = cycle(i);
+                card.innerHTML = `
+                    <i class="fa fa-image img-icon"></i>
+                    <div class="img-name">${name}</div>
+                    <div class="img-meta">JPG · 2048 × 1536 · 3.2MB</div>
+                `;
+                imgGrid.appendChild(card);
+            });
+
+            // 视频列表 mock
+            const videoList = document.getElementById('video-list');
+            videoItems.forEach(([title, duration], i) => {
+                const row = document.createElement('div');
+                row.className = 'video-row';
+                row.style.backgroundColor = cycle(i);
+                row.innerHTML = `
+                    <div class="video-thumb">
+                        <i class="fa fa-play-circle"></i>
+                        <span class="duration">${duration}</span>
+                    </div>
+                    <div class="video-info">
+                        <div class="video-title">${title}</div>
+                        <div class="video-meta">2026-10-30 · 1.2万次播放</div>
+                    </div>
+                `;
+                videoList.appendChild(row);
+            });
+
+            // 菜单列表 mock
+            const menuList = document.getElementById('menu-list');
+            menuItems.forEach(([icon, label], i) => {
+                const row = document.createElement('div');
+                row.className = 'menu-row';
+                row.style.backgroundColor = cycle(i);
+                row.innerHTML = `
+                    <i class="fa ${icon}"></i>
+                    <span class="menu-label">${label}</span>
+                    <i class="fa fa-angle-right"></i>
+                `;
+                menuList.appendChild(row);
+            });
+
+            // 拷贝整组（JS 数组）
+            document.getElementById('copy-array-btn').addEventListener('click', function() {
+                copyTextCL050(JSON.stringify(listBgPalette), () => {
+                    toastMessage.textContent = '整组色板数组已拷贝';
+                    toast.show();
+                }, err => {
+                    toastMessage.textContent = `拷贝失败：${err.message}`;
+                    toast.show();
+                    console.error('拷贝失败:', err);
+                });
+            });
+        }
+
+        // 6. 源码浮层（v1.2：右上角浮动按钮 + 80%×90% 弹出面板，内容跟随当前激活体系）
+        const sourceOverlay = document.getElementById('source-overlay');
+        let currentSystemKey = 'classic';
+        let currentJsonText = '';
+
+        function openSourcePanel() {
+            const system = colorSystems[currentSystemKey];
+            currentJsonText = JSON.stringify(system.data, null, 4);
+            document.getElementById('source-panel-title').textContent = `源码 · ${system.name}`;
+            document.getElementById('source-json-content').textContent = currentJsonText;
+            sourceOverlay.style.display = 'block';
+        }
+
+        function closeSourcePanel() {
+            sourceOverlay.style.display = 'none';
+        }
+
+        // 7. 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            renderColors('classic', 'classic-container');
+            renderColors('food', 'food-container');
+            renderColors('rainbow', 'rainbow-container');
+            renderListBg();
+
+            // Tab 切换时更新当前体系（源码面板跟随，v1.2）
+            document.getElementById('classic-tab').addEventListener('shown.bs.tab', () => { currentSystemKey = 'classic'; });
+            document.getElementById('food-tab').addEventListener('shown.bs.tab', () => { currentSystemKey = 'food'; });
+            document.getElementById('rainbow-tab').addEventListener('shown.bs.tab', () => { currentSystemKey = 'rainbow'; });
+
+            // 源码浮层开关：浮动按钮 / × / 遮罩空白 / ESC
+            document.getElementById('source-fab').addEventListener('click', openSourcePanel);
+            document.getElementById('source-close-btn').addEventListener('click', closeSourcePanel);
+            sourceOverlay.addEventListener('click', function(e) {
+                if (e.target === sourceOverlay) { closeSourcePanel(); }
+            });
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') { closeSourcePanel(); }
+            });
+
+            // 源码拷贝（当前体系 JSON）
+            document.getElementById('copy-source-btn').addEventListener('click', function() {
+                copyTextCL050(currentJsonText, () => {
+                    toastMessage.textContent = `已拷贝「${colorSystems[currentSystemKey].name}」JSON`;
+                    toast.show();
+                }, err => {
+                    toastMessage.textContent = `拷贝失败：${err.message}`;
+                    toast.show();
+                    console.error('拷贝失败:', err);
+                });
+            });
+
+            console.log(`[brand-colors] v${PAGE_VERSION}`);
+        });
+    </script>
+</body>
+</html>

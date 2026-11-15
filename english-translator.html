@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <link rel="canonical" href="https://tools.cli.jaden.tech/english-translator.html">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>英语句型翻译助手</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+        .sidebar {
+            width: 350px;
+            background: #fff;
+            border-right: 1px solid #e0e0e0;
+            display: flex;
+            flex-direction: column;
+        }
+        .sidebar-header {
+            padding: 20px;
+            background: #4a90d9;
+            color: white;
+        }
+        .sidebar-header h1 {
+            font-size: 18px;
+            margin-bottom: 5px;
+        }
+        .sidebar-header .stats {
+            font-size: 12px;
+            opacity: 0.8;
+        }
+        .history-list {
+            flex: 1;
+            overflow-y: auto;
+        }
+        .history-item {
+            padding: 15px 20px;
+            border-bottom: 1px solid #f0f0f0;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .history-item:hover {
+            background: #f8f9fa;
+        }
+        .history-item.active {
+            background: #e3f2fd;
+            border-left: 3px solid #4a90d9;
+        }
+        .history-time {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        .history-type {
+            font-size: 13px;
+            color: #4a90d9;
+            font-weight: 500;
+            margin-bottom: 3px;
+        }
+        .history-preview {
+            font-size: 12px;
+            color: #999;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .main {
+            flex: 1;
+            padding: 30px;
+            overflow-y: auto;
+        }
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #999;
+        }
+        .empty-state .icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+        .empty-state p {
+            font-size: 16px;
+        }
+        .report {
+            background: #fff;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .report-section {
+            margin-bottom: 25px;
+        }
+        .report-section h2 {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #eee;
+        }
+        .source-text {
+            font-size: 14px;
+            color: #333;
+            line-height: 1.8;
+        }
+        .translation-text {
+            font-size: 16px;
+            color: #1a1a1a;
+            line-height: 1.8;
+        }
+        .components-list {
+            list-style: none;
+        }
+        .components-list li {
+            padding: 8px 0;
+            border-bottom: 1px solid #f5f5f5;
+            font-size: 14px;
+        }
+        .components-list li:last-child {
+            border-bottom: none;
+        }
+        .component-label {
+            font-weight: 500;
+            color: #4a90d9;
+        }
+        .vocab-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .vocab-table th, .vocab-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .vocab-table th {
+            background: #f8f9fa;
+            font-weight: 500;
+            color: #666;
+        }
+        .vocab-table tr:hover {
+            background: #f8f9fa;
+        }
+        .report-id {
+            font-size: 11px;
+            color: #999;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h1>📚 翻译历史</h1>
+                <div class="stats">共 3 条记录</div>
+            </div>
+            <div class="history-list">
+                
+                <div class="history-item" data-id="20240520103000" onclick="loadReport('20240520103000')">
+                    <div class="history-time">2024-05-20T10:30:00</div>
+                    <div class="history-type">S + Vt + O; S + V + P; S + V + P</div>
+                    <div class="history-preview">That means getting specific before you get moving. People struggle with expense ...</div>
+                </div>
+            
+                <div class="history-item" data-id="20260519233201" onclick="loadReport('20260519233201')">
+                    <div class="history-time">2026-05-19T23:32:01</div>
+                    <div class="history-type">主谓宾 + 非限制性定语从句</div>
+                    <div class="history-preview">AI follows your direction, which means a founder who isn't asking hard questions...</div>
+                </div>
+            
+                <div class="history-item" data-id="20240518150000" onclick="loadReport('20240518150000')">
+                    <div class="history-time">2024-05-18T15:00:00</div>
+                    <div class="history-type">S + Vt + O</div>
+                    <div class="history-preview">By eradicating the once-steep learning curves that even experienced technical fo...</div>
+                </div>
+            
+            </div>
+        </div>
+        <div class="main">
+            <div class="empty-state" id="emptyState">
+                <div class="icon">📖</div>
+                <p>请从左侧选择一个翻译记录</p>
+            </div>
+            <div class="report" id="reportContainer" style="display: none;"></div>
+        </div>
+    </div>
+    <script>
+        // 所有报告数据（嵌入到 HTML 中，支持 file:// 协议离线访问）
+        var reportsData = {"20240520103000": {"id": "20240520103000", "timestamp": "2024-05-20T10:30:00", "source": {"text": "That means getting specific before you get moving. People struggle with expense reporting is an observation. Finance managers at mid-market companies spend four-plus hours a week reconciling submissions because their current tools don't integrate with their accounting software is a testable hypothesis.", "sentence_type": "S + Vt + O; S + V + P; S + V + P"}, "translation": {"text": "这意味着在采取行动之前要先做到具体明确。人们在费用报告上感到费力，这是一个观察结果。中型市场公司的财务经理每周花费四个多小时来核对提交的报销单，因为他们目前的工具无法与会计软件集成，这是一个可测试的假设。", "sentence_type": "主谓宾句型；主系表句型（含主语从句）；主系表句型（含主语从句）"}, "analysis": {"components": [{"element": "句子1-主语(S.)", "content": "That", "note": "指示代词作主语"}, {"element": "句子1-谓语(V.)", "content": "means", "note": "及物动词"}, {"element": "句子1-宾语(O.)", "content": "getting specific before you get moving", "note": "动名词短语作宾语；其中before you get moving为时间状语从句，修饰动名词getting"}, {"element": "句子2-主语(S.)", "content": "People struggle with expense reporting", "note": "主语从句（此处省略了引导词that），整体作主语"}, {"element": "句子2-谓语/系动词(V.)", "content": "is", "note": "系动词"}, {"element": "句子2-表语(P.)", "content": "an observation", "note": "名词短语作表语"}, {"element": "句子3-主语(S.)", "content": "Finance managers at mid-market companies spend four-plus hours a week reconciling submissions because their current tools don't integrate with their accounting software", "note": "主语从句（省略了引导词that），整体作主语；其中包含because引导的原因状语从句，修饰spend reconciling"}, {"element": "句子3-谓语/系动词(V.)", "content": "is", "note": "系动词"}, {"element": "句子3-表语(P.)", "content": "a testable hypothesis", "note": "名词短语作表语"}]}, "vocabulary": [{"word": "specific", "pos": "adj.", "meaning": "具体的，明确的", "note": "getting specific 指做到具体明确"}, {"word": "struggle", "pos": "v.", "meaning": "挣扎，感到费力", "note": "struggle with sth. 表示在某方面感到困难/费力"}, {"word": "expense", "pos": "n.", "meaning": "费用，开支", "note": "expense reporting 指费用报告/报销"}, {"word": "observation", "pos": "n.", "meaning": "观察，观察结果", "note": ""}, {"word": "finance", "pos": "n.", "meaning": "财务，金融", "note": "finance managers 财务经理"}, {"word": "mid-market", "pos": "adj.", "meaning": "中型市场的", "note": "指介于大型和小型企业之间的中等规模市场"}, {"word": "reconcile", "pos": "v.", "meaning": "核对，使调和", "note": "财务语境下常指核对账目"}, {"word": "submission", "pos": "n.", "meaning": "提交，提交物", "note": "此处指提交的报销单据"}, {"word": "integrate", "pos": "v.", "meaning": "整合，集成", "note": "integrate with 表示与...集成/整合"}, {"word": "hypothesis", "pos": "n.", "meaning": "假设，假说", "note": "testable hypothesis 可测试的假设"}]}, "20260519233201": {"id": "20260519233201", "timestamp": "2026-05-19T23:32:01", "source": {"text": "AI follows your direction, which means a founder who isn't asking hard questions can now construct an elaborate, well-researched-looking case for a bad idea faster than ever before, while feeling fully confident that they are, in fact, performing due diligence.", "sentence_type": "主谓宾 + 非限制性定语从句"}, "translation": {"text": "AI遵循你的指令，这意味着一个不善于提出尖锐问题的创始人现在可以比以前更快地为一个糟糕的想法构建一个精心设计的、看起来研究充分的理由，同时完全确信自己实际上正在尽职调查。", "sentence_type": "主谓宾 + 非限制性定语从句"}, "analysis": {"components": [{"element": "主语(S.)", "content": "AI", "note": "主句主语"}, {"element": "谓语(V.)", "content": "follows", "note": "主句谓语"}, {"element": "宾语(O.)", "content": "your direction", "note": "主句宾语"}, {"element": "主语(S.)", "content": "which", "note": "非限制性定语从句的主语（指代整个主句）"}, {"element": "谓语(V.)", "content": "means", "note": "非限制性定语从句的谓语"}, {"element": "宾语从句中的主语(S.)", "content": "a founder who isn't asking hard questions", "note": "宾语从句（means的宾语）的主语，其中包含一个定语从句修饰founder"}, {"element": "谓语(V.)", "content": "can construct", "note": "宾语从句的谓语（情态动词+动词原形）"}, {"element": "宾语(O.)", "content": "an elaborate, well-researched-looking case for a bad idea", "note": "宾语从句的宾语"}, {"element": "状语(Adv.)", "content": "faster than ever before", "note": "修饰谓语construct，表示比较"}, {"element": "伴随状语(Adv.)", "content": "while feeling fully confident that they are, in fact, performing due diligence", "note": "现在分词短语作伴随状语，修饰construct，其中包含一个宾语从句"}]}, "vocabulary": [{"word": "AI", "pos": "n.", "meaning": "人工智能", "note": "专有名词"}, {"word": "follow", "pos": "v.", "meaning": "遵循，跟随", "note": "原形，句中为第三人称单数follows"}, {"word": "direction", "pos": "n.", "meaning": "指示，方向", "note": ""}, {"word": "mean", "pos": "v.", "meaning": "意味着", "note": "原形，句中为第三人称单数means"}, {"word": "founder", "pos": "n.", "meaning": "创始人", "note": ""}, {"word": "construct", "pos": "v.", "meaning": "构建，构造", "note": "原形，句中与can连用"}, {"word": "elaborate", "pos": "adj.", "meaning": "精心制作的", "note": ""}, {"word": "well-researched-looking", "pos": "adj.", "meaning": "看起来研究充分的", "note": "复合形容词"}, {"word": "case", "pos": "n.", "meaning": "理由，论据", "note": "此处指辩护的理由"}, {"word": "due diligence", "pos": "n.", "meaning": "尽职调查", "note": "商业术语"}]}, "20240518150000": {"id": "20240518150000", "timestamp": "2024-05-18T15:00:00", "source": {"text": "By eradicating the once-steep learning curves that even experienced technical founders faced in integrating the tools, platforms, and systems needed to bring their idea to life, AI has above all leveled the playing field around who can launch a startup or build a product.", "sentence_type": "S + Vt + O"}, "translation": {"text": "通过消除即使是经验丰富的技术创始人在整合实现其想法所需的工具、平台和系统时所面临的曾经陡峭的学习曲线，AI 最重要的是拉平了谁能够创办初创企业或开发产品的竞争环境。", "sentence_type": "主谓宾句型（核心结构为 AI has leveled the playing field，句首附带介词短语作方式状语）"}, "analysis": {"components": [{"element": "状语(Adv.)", "content": "By eradicating the once-steep learning curves that even experienced technical founders faced in integrating the tools, platforms, and systems needed to bring their idea to life", "note": "介词短语作方式状语，修饰整个主句。其中包含that引导的定语从句修饰learning curves；in integrating...作定语从句中的状语；needed to...为过去分词短语作后置定语修饰tools, platforms, and systems"}, {"element": "主语(S.)", "content": "AI", "note": "人工智能"}, {"element": "谓语(V.)", "content": "has leveled", "note": "现在完成时，及物动词"}, {"element": "状语(Adv.)", "content": "above all", "note": "副词短语作强调状语，修饰谓语has leveled，表示“最重要的是”"}, {"element": "宾语(O.)", "content": "the playing field", "note": "竞争环境"}, {"element": "状语(Adv.)", "content": "around who can launch a startup or build a product", "note": "介词短语作范围状语，修饰谓语has leveled。其中包含who引导的宾语从句作介词around的宾语"}]}, "vocabulary": [{"word": "eradicate", "pos": "v.", "meaning": "根除；消除", "note": ""}, {"word": "once-steep", "pos": "adj.", "meaning": "曾经陡峭的", "note": "复合形容词，once表示“曾经”"}, {"word": "learning curve", "pos": "n.", "meaning": "学习曲线", "note": "指学习新事物所需的时间和精力"}, {"word": "experienced", "pos": "adj.", "meaning": "经验丰富的", "note": ""}, {"word": "integrate", "pos": "v.", "meaning": "整合；集成", "note": ""}, {"word": "bring to life", "pos": "phrase", "meaning": "使成为现实；实现", "note": ""}, {"word": "above all", "pos": "adv.", "meaning": "最重要的是；尤其是", "note": ""}, {"word": "level the playing field", "pos": "phrase", "meaning": "拉平竞争环境；创造公平竞争机会", "note": "常用习语"}, {"word": "launch", "pos": "v.", "meaning": "创办；启动", "note": ""}, {"word": "startup", "pos": "n.", "meaning": "初创企业；初创公司", "note": ""}]}};
+
+        function loadReport(id) {
+            // 更新激活状态
+            document.querySelectorAll('.history-item').forEach(function(item) {
+                item.classList.remove('active');
+            });
+            event.currentTarget.classList.add('active');
+
+            // 从嵌入数据中获取报告
+            var data = reportsData[id];
+            if (data) {
+                renderReport(data);
+            } else {
+                console.error('报告不存在:', id);
+            }
+        }
+
+        function renderReport(data) {
+            document.getElementById('emptyState').style.display = 'none';
+            document.getElementById('reportContainer').style.display = 'block';
+
+            var html = '';
+
+            // 原文
+            var srcType = data.source ? data.source.sentence_type : '';
+            var srcText = data.source ? data.source.text : '';
+            html += '<div class="report-section">' +
+                '<h2>📝 原文 (' + srcType + ')</h2>' +
+                '<div class="source-text">' + srcText + '</div>' +
+                '</div>';
+
+            // 翻译
+            var transType = data.translation ? data.translation.sentence_type : '';
+            var transText = data.translation ? data.translation.text : '';
+            html += '<div class="report-section">' +
+                '<h2>🔄 翻译 (' + transType + ')</h2>' +
+                '<div class="translation-text">' + transText + '</div>' +
+                '</div>';
+
+            // 成分分析
+            var components = (data.analysis && data.analysis.components) || [];
+            if (components.length > 0) {
+                html += '<div class="report-section"><h2>📊 成分分析</h2><ul class="components-list">';
+                for (var i = 0; i < components.length; i++) {
+                    var c = components[i];
+                    html += '<li><span class="component-label">' + c.element + '：</span>' + c.content;
+                    if (c.note) html += '（' + c.note + '）';
+                    html += '</li>';
+                }
+                html += '</ul></div>';
+            }
+
+            // 词性标注
+            var vocab = data.vocabulary || [];
+            if (vocab.length > 0) {
+                html += '<div class="report-section"><h2>📖 词性标注</h2><table class="vocab-table"><thead><tr><th>单词</th><th>词性</th><th>中文释义</th></tr></thead><tbody>';
+                for (var j = 0; j < vocab.length; j++) {
+                    var v = vocab[j];
+                    html += '<tr><td><strong>' + (v.word || '') + '</strong></td><td>' + (v.pos || '') + '</td><td>' + (v.meaning || '') + (v.note ? '（' + v.note + '）' : '') + '</td></tr>';
+                }
+                html += '</tbody></table></div>';
+            }
+
+            html += '<div class="report-id">ID: ' + data.id + ' | 时间: ' + data.timestamp + '</div>';
+
+            document.getElementById('reportContainer').innerHTML = html;
+        }
+    </script>
+</body>
+</html>
