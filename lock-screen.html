@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LockScreen 插件演示</title>
+    <meta name="description" content="iOS 锁屏小组件（Scriptable）效果示例：时钟、天气与今日诗歌同屏演示。">
+    <meta property="og:title" content="锁屏小组件示例">
+    <meta property="og:description" content="iOS 锁屏小组件（Scriptable）效果示例：时钟、天气与今日诗歌同屏演示。">
+  <script src="/assets/js/tailwindcss@3.4.17.js"></script>
+  <link href="/assets/css/font-awesome@4.7.0.min.css" rel="stylesheet">
+  <!-- 引入锁屏插件 -->
+  <script src="/lock-screen-plugin@1.4.js"></script>
+  <!-- 引入每日诗词数据（供锁屏今日信息展示，file:// 可用） -->
+  <script src="/today-poetry.json.js"></script>
+  <style>
+    .code-block {
+      position: relative;
+      border-radius: 0.5rem;
+      background-color: #f8fafc;
+      padding: 1rem;
+      overflow-x: auto;
+    }
+    .copy-btn {
+      position: absolute;
+      top: 0.5rem; 
+      right: 0.5rem;
+      padding: 0.25rem 0.5rem;
+      font-size: 0.75rem;
+      background-color: #e2e8f0;
+      border: none;
+      border-radius: 0.25rem;
+      cursor: pointer;
+    }
+    /* Popover 样式 */
+    .popover {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      border-radius: 0.75rem;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+      padding: 1.5rem;
+      min-width: 300px;
+      max-width: 90%;
+      z-index: 9999;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.3s ease;
+    }
+    .popover.show {
+      opacity: 1;
+      visibility: visible;
+    }
+    .popover-header {
+      font-size: 1.125rem;
+      font-weight: 600;
+      color: #1f2937;
+      margin-bottom: 0.5rem;
+    }
+    .popover-body {
+      color: #6b7280;
+    }
+    .popover-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.5);
+      z-index: 9998;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.3s ease;
+    }
+    .popover-overlay.show {
+      opacity: 1;
+      visibility: visible;
+    }
+  </style>
+
+    <link rel="canonical" href="https://tools.cli.jaden.tech/lock-screen.html">
+    <link rel="icon" href="/favicon.png">
+    <meta name="theme-color" content="#2c3e50">
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <div class="container mx-auto px-4 py-8 max-w-4xl">
+    <header class="mb-10 flex justify-between items-start">
+      <div>
+        <h1 class="text-3xl font-bold text-gray-800 mb-2">LockScreen 插件</h1>
+        <p class="text-gray-600">轻量级锁屏插件，密码为当前日期的<code class="bg-gray-200 px-1 py-0.5 rounded">mmddHH</code> 格式（月/日/小时）</p>
+      </div>
+      <!-- 真实锁屏按钮 -->
+      <button id="demo-lock-btn" class="bg-gray-200 text-dark px-6 py-3 rounded-lg hover:bg-primary/90 transition-colors flex items-center">
+        <i class="fa fa-lock mr-2"></i> 锁屏演示
+      </button>
+    </header>
+
+    <main>
+      <!-- 用法说明 -->
+      <section class="mb-12">
+        <h2 class="text-2xl font-semibold mb-4 text-gray-800">使用说明</h2>
+        
+        <div class="mb-8">
+          <h3 class="text-xl font-medium mb-3 text-gray-700">1. 引入插件</h3>
+          <p class="mb-2 text-gray-600">在HTML中引入插件文件和依赖资源：</p>
+          <div class="code-block mb-4">
+            <button class="copy-btn" onclick="copyCode(this)">复制</button>
+            <pre><code>&lt;script src="/assets/js/tailwindcss@3.4.17.js"&gt;&lt;/script&gt;
+&lt;link href="/assets/css/font-awesome@4.7.0.min.css" rel="stylesheet"&gt;
+
+&lt;!-- 引入锁屏插件 --&gt;
+&lt;script src="/lock-screen-plugin@1.4.js"&gt;&lt;/script&gt;
+&lt;!-- 今日诗词数据（供悬浮面板展示，file:// 可用；不引入则 todayInfo 为空、面板不渲染） --&gt;
+&lt;script src="/today-poetry.json.js"&gt;&lt;/script&gt;
+</code></pre>
+          </div>
+        </div>
+        
+        <div class="mb-8">
+          <h3 class="text-xl font-medium mb-3 text-gray-700">2. 基本用法</h3>
+          <p class="mb-2 text-gray-600">插件会自动初始化，您可以通过全局实例控制锁屏功能：</p>
+          <div class="code-block mb-4">
+            <button class="copy-btn" onclick="copyCode(this)">复制</button>
+            <pre><code>// 锁定屏幕
+window.lockScreenInstance.lock();
+
+// 检查当前是否处于锁定状态
+console.log(window.lockScreenInstance.getIsLocked()); // true/false</code></pre>
+          </div>
+        </div>
+        
+        <div class="mb-8">
+          <h3 class="text-xl font-medium mb-3 text-gray-700">3. 自定义配置</h3>
+          <p class="mb-2 text-gray-600">您可以通过自定义配置初始化插件：</p>
+          <div class="code-block mb-4">
+            <button class="copy-btn" onclick="copyCode(this)">复制</button>
+            <pre><code>// 销毁默认实例（如果已初始化）
+if (window.lockScreenInstance) {
+  delete window.lockScreenInstance;
+}
+
+// 自定义配置初始化
+window.lockScreenInstance = new LockScreen({
+  lockDuration: 15 * 60 * 1000, // 15分钟自动锁定
+  pinLength: 6, // PIN码长度
+  title: '请输入密码解锁', // 自定义标题
+  // 今日信息（农历/节气 + 推荐诗词），传 null 则诗词面板不渲染
+  todayInfo: {
+    dateLine: '丙午年（马）七月十七 · 白露',
+    poemTitle: '月夜忆舍弟',
+    poemAuthor: '杜甫',
+    poemParagraphs: ['戍鼓断人行，秋边一雁声。', '露从今夜白，月是故乡明。']
+  },
+  // 右上角悬浮诗词面板：enabled 开关、defaultOpen 是否默认展开
+  poetryPanel: { enabled: true, defaultOpen: true }
+});</code></pre>
+          </div>
+        </div>
+        
+        <div class="mb-8">
+          <h3 class="text-xl font-medium mb-3 text-gray-700">4. 锁屏按钮示例代码</h3>
+          <p class="mb-2 text-gray-600">创建一个锁屏按钮的完整代码：</p>
+          <div class="code-block mb-4">
+            <button class="copy-btn" onclick="copyCode(this)">复制</button>
+            <pre><code>&lt;!-- 按钮HTML --&gt;
+&lt;button id="lock-btn" class="bg-primary text-white px-6 py-3 rounded-lg hover:bg-primary/90 transition-colors"&gt;
+  &lt;i class="fa fa-lock mr-2"&gt;&lt;/i&gt; 锁定屏幕
+&lt;/button&gt;
+
+&lt;!-- 按钮事件绑定 --&gt;
+&lt;script&gt;
+  document.getElementById('lock-btn').addEventListener('click', function() {
+    // 调用锁屏方法
+    window.lockScreenInstance.lock();
+  });
+&lt;/script&gt;</code></pre>
+          </div>
+        </div>
+
+        <div class="mb-8">
+          <h3 class="text-xl font-medium mb-3 text-gray-700">5. 自定义回调函数</h3>
+          <p class="mb-2 text-gray-600">您可以为锁定和解锁操作添加自定义回调函数，用于执行额外逻辑：</p>
+          <div class="code-block mb-4">
+            <button class="copy-btn" onclick="copyCode(this)">复制</button>
+            <pre><code>// 方法1: 初始化时配置默认回调函数
+if (window.lockScreenInstance) {
+  delete window.lockScreenInstance;
+}
+
+window.lockScreenInstance = new LockScreen({
+  lockDuration: 15 * 60 * 1000,
+  pinLength: 6,
+  title: '请输入密码解锁',
+  onLock: function() {
+    console.log('屏幕已锁定（默认回调）');
+  },
+  onUnlock: function() {
+    console.log('屏幕已解锁（默认回调）');
+    // 可以在这里添加解锁后的操作，如恢复数据等
+  }
+});
+
+// 方法2: 调用时传递回调函数
+// 锁定屏幕时添加回调
+document.getElementById('lock-btn').addEventListener('click', function() {
+  window.lockScreenInstance.lock(function() {
+    console.log('屏幕已锁定');
+    // 可以在这里添加锁定后的额外操作，如发送统计信息等
+  });
+});
+
+// 解锁成功回调：仅支持 onUnlock 配置项或 unlock(cb) 方法参数两种方式
+// （插件不派发自定义 DOM 事件，监听 'lockscreen-unlock' 不会触发）</code></pre>
+          </div>
+          <p class="text-gray-600">
+            回调函数可以用于执行各种操作，如记录日志、发送通知、更新UI状态等。
+            当同时设置了初始化配置中的回调和方法调用时的回调，会优先执行方法调用时传递的回调。
+          </p>
+        </div>
+
+        <div class="mb-8">
+          <h3 class="text-xl font-medium mb-3 text-gray-700">6. 功能特点</h3>
+          <ul class="list-disc pl-6 text-gray-600 space-y-2">
+            <li>支持屏幕自动锁定（默认30分钟无操作）</li>
+            <li>支持物理键盘输入数字和删除</li>
+            <li>支持屏幕键盘输入</li>
+            <li>自动生成基于当前时间的PIN码（mmddHH格式）</li>
+            <li>解锁状态本地存储，页面刷新后保持</li>
+            <li>右上角悬浮「今日诗词」面板：展示完整诗词，标题栏可折叠、默认展开</li>
+            <li>诗词面板层级高于锁屏层，锁屏/解锁状态均可见，位于右上角不遮挡居中 PIN 键盘</li>
+            <li>成套主题色：内置 4 套预设（紫蓝星辰 / 深蓝夜空 / 墨绿 / 暖橙），锁屏界面左上角下拉切换，刷新后保持</li>
+            <li>响应式设计，适配各种屏幕尺寸</li>
+          </ul>
+        </div>
+
+        <div class="mb-8">
+          <h3 class="text-xl font-medium mb-3 text-gray-700">7. 主题切换</h3>
+          <p class="mb-2 text-gray-600">锁屏界面散落的颜色统一抽取为 CSS 变量，内置 4 套成套预设主题，可通过配置档指定默认主题，并在锁屏界面通过左上角下拉实时切换：</p>
+          <div class="code-block mb-4">
+            <button class="copy-btn" onclick="copyCode(this)">复制</button>
+            <pre><code>window.lockScreenInstance = new LockScreen({
+  // ... 其它配置 ...
+  // 默认主题名：violet-star / midnight-blue / forest-green / sunset-amber
+  defaultTheme: 'midnight-blue',
+  // 锁屏界面主题下拉开关（默认 true）
+  themeSwitcher: { enabled: true },
+  // 主题切换回调
+  onThemeChange: function(name) {
+    console.log('当前主题：' + name);
+  },
+  // 自定义主题（扩展预设，需提供 CSS 变量集）
+  themes: {
+    'ocean-cyan': {
+      label: '青蓝海洋',
+      vars: {
+        '--lock-bg-gradient': 'linear-gradient(135deg,#0f2027 0%,#203a43 50%,#2c5364 100%)',
+        '--lock-accent': '#22d3ee',
+        '--lock-pin-filled-bg': 'rgba(34,211,238,0.18)',
+        '--lock-panel-header-gradient': 'linear-gradient(135deg,#0f2027 0%,#2c5364 100%)'
+      }
+    }
+  }
+});</code></pre>
+          </div>
+          <p class="text-gray-600">
+            主题优先级：<code class="bg-gray-200 px-1 py-0.5 rounded">localStorage.lockScreenTheme</code>（用户选择） &gt;
+            <code class="bg-gray-200 px-1 py-0.5 rounded">defaultTheme</code>（配置档） &gt; <code>紫蓝星辰</code>（内置默认）。
+            更改主题后即时生效并写入 localStorage，刷新后保持。主题下拉位于锁屏界面左上角，避开右上角诗词面板。
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="mt-16 text-center text-gray-500 text-sm">
+      <p>LockScreen 插件演示 &copy; 2025</p>
+    </footer>
+  </div>
+
+  <!-- Popover 容器 -->
+  <div class="popover-overlay" id="popoverOverlay"></div>
+  <div class="popover" id="customPopover">
+    <div class="popover-header" id="popoverTitle"></div>
+    <div class="popover-body" id="popoverBody"></div>
+  </div>
+
+  <script>
+    // 自定义 Popover 函数 - 自动消失版本
+    function showPopover(title, message, duration = 1000) {
+      const overlay = document.getElementById('popoverOverlay');
+      const popover = document.getElementById('customPopover');
+      const popoverTitle = document.getElementById('popoverTitle');
+      const popoverBody = document.getElementById('popoverBody');
+
+      // 设置内容
+      popoverTitle.textContent = title;
+      popoverBody.textContent = message;
+
+      // 显示 Popover
+      overlay.classList.add('show');
+      popover.classList.add('show');
+
+      // 自动关闭定时器
+      setTimeout(() => {
+        overlay.classList.remove('show');
+        popover.classList.remove('show');
+      }, duration);
+    }
+
+    // 从每日诗词数据构建锁屏今日信息（数据缺失时返回 null，插件自动不渲染）
+    function buildTodayInfo() {
+      if (typeof dailyPoetryData === 'undefined') return null;
+      const d = dailyPoetryData;
+      const parts = [];
+      if (d.lunar) {
+        parts.push(`${d.lunar.ganzhi_year}年（${d.lunar.animal}）${d.lunar.month}月${d.lunar.day_cn}`);
+      }
+      if (d.solar_term && d.solar_term.term) parts.push(d.solar_term.term);
+      if (d.lunar_festival) parts.push(d.lunar_festival);
+      const first = (d.recommendations && d.recommendations[0]) || null;
+      return {
+        dateLine: parts.join(' · '),
+        poemTitle: first ? first.title : '',
+        poemAuthor: first ? first.author : '',
+        poemParagraphs: first && first.paragraphs ? first.paragraphs : []
+      };
+    }
+
+    if (window.lockScreenInstance) {
+      delete window.lockScreenInstance;
+    }
+
+    window.lockScreenInstance = new LockScreen({
+      lockDuration: 15 * 60 * 1000,
+      pinLength: 6,
+      title: '请输入密码解锁',
+      todayInfo: buildTodayInfo(),
+      // 主题：默认主题 + 锁屏界面主题下拉开关 + 切换回调
+      defaultTheme: 'violet-star',
+      themeSwitcher: { enabled: true },
+      onThemeChange: function(name) {
+        console.log('主题切换为：' + name);
+      },
+      onLock: function() {
+        console.log('屏幕已锁定（默认回调）');
+      },
+      onUnlock: function() {
+        // showPopover('解锁成功', '演示：屏幕已解锁');
+        // 可以在这里添加解锁后的操作，如恢复数据等
+      }
+    });
+
+    // 演示按钮事件绑定（添加了回调函数示例）
+    document.getElementById('demo-lock-btn').addEventListener('click', function() {
+        window.lockScreenInstance.lock(function() {
+          // showPopover('屏幕已锁定', '演示：屏幕已锁定');
+        });
+    });
+    
+    // 代码复制功能
+    function copyCode(btn) {
+        const codeBlock = btn.nextElementSibling;
+        const textToCopy = codeBlock.textContent;
+
+        // CL043: 能力判断前置 + textarea/execCommand 回退（非安全上下文下 navigator.clipboard 为 undefined）
+        const flash = (label, ok) => {
+            const originalText = btn.textContent;
+            btn.textContent = label;
+            btn.style.backgroundColor = ok ? '#4ade80' : '#f87171';
+            setTimeout(() => {
+                btn.textContent = originalText;
+                btn.style.backgroundColor = '';
+            }, 2000);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
+            navigator.clipboard.writeText(textToCopy)
+                .then(() => flash('已复制', true))
+                .catch(() => { const ok = copyViaTextarea(textToCopy); flash(ok ? '已复制' : '复制失败', ok); });
+        } else {
+            const ok = copyViaTextarea(textToCopy);
+            flash(ok ? '已复制' : '复制失败', ok);
+        }
+    }
+
+    /** CL043: 回退路径（textarea + execCommand，检查返回值） */
+    function copyViaTextarea(text) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.cssText = 'position:fixed;top:-1000px;left:-1000px;opacity:0';
+        document.body.appendChild(ta);
+        ta.select();
+        let ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+        document.body.removeChild(ta);
+        return ok;
+    }
+  </script>
+<!-- build: lock-screen @ script-miner 921a3b8a 2026-11-15 17:01 -->
+</body>
+</html>

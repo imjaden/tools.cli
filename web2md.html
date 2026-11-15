@@ -1,0 +1,2860 @@
+<!--
+web2md 文章列表页 —— 源码框架（v3.0.0, 2026-09-26）
+闭环: SCRIPT-MINER-CL036（web2md × git-cloner 关联联动 + 标签体系 + Supabase 同步 · 页面批）
+设计: documents/solutions/web2md-gitcloner-linkage-tags-plugin-sync-design-v1.0-20260925.md
+      §15.5（页面契约，冻结）· §9（页面重构与纪律）· §11 A17–A18（验收判据）
+
+本页由 git 维护；生成器 projects/web2md/web2md.py 只产出数据文件 web2md-data.js
+  （v1.13 / SCRIPT-MINER-CL024 起生成器不再覆盖本页；与 git-cloner CL023 同路线）——禁止生成器覆盖页面源码。
+
+v3.0.0 重构（CL036）：页面改为与 efficiency/git-cloner.html **同源**的 html-gen table runtime 形态
+1. 能力对齐基准页：range tabs / localStorage 状态 / 分栏（columnsSplit）/ URL 状态恢复（?range&q&tab&split）
+   / 千分位（toLocaleString）/ 搜索 + CSV 导出 / actions 列 / stats 行；**不再引任何外链 CDN**
+   （旧页的 marked.js CDN 与 step1/step2 正文阅读面板随 data js 瘦身退场：正文不进页面，按 §15.5 契约）
+2. 数据面：`<script src="/web2md-data.js">` → window.WEB2MD_DATA（file:// 直开可用，无 fetch / 无跨域）；
+   契约字段缺失一律优雅降级（标签列空 / 关联计数 0 / 状态空 / 同步行不显示），不报错不伪造；
+   旧形状 {articles:[…]} 兼容读取（本批另一实施方瘦身落地前的过渡态）
+3. 列：标题 / 平台 / 作者 / 日期 / 🏷 标签（pills）/ 🔗 关联项目（数量·可点分栏）/ 状态（completed_steps）
+   / actions（📋 复制命令 · 🤖 复制给 AI · ⌨️ 复制句柄 · 📄 打开原文）
+4. 标签筛选：组下拉 → 标签多选级联 → 前端过滤 + URL 写回（?tag=&tagGroup=）；口径与 CLI `list` 同源
+   （多标签 = 交集、标签组 = 组内并集）；标签库优先读数据 js 的 taxonomy，缺失则从行内 tags 聚合
+5. localStorage 前缀 `web2md:table:*`（与基准页 `git-cloner:table:*` 互不污染，验收 A17）；键：
+   col-visibility / density / click-mode / split-ratio / range / tab / tag-filter / col-widths / presets
+6. 同步状态行：读 stats.remote_max_id / fetched_at / unfetched，展示「与 Supabase 齐平（截至 t）」或
+   「远端新增 N 条未拉齐 → 运行 web2md sync」（三个字段都缺 → 整行不显示；D18=A 元数据法，不做实时查询）
+7. 保留既有能力（v2.0/v2.1，SCRIPT-MINER-CL024）：🤖 复制给 AI / ⌨️ 复制句柄（actions 列 + 分栏详情头部
+   工具栏两处入口）、块构建器 WEB2MD_BLOCK_BUILDER_START/END 区段与 CLI `web2md info <ID> --ai` 逐字段对齐
+   （由 web2md-test.py 的 node 对照测试钉住）；复制一律 stopPropagation，toast 只给摘要
+   （v2.1 修正史：旧页 renderArticleList() 必须先于 selectArticle() —— 本版分栏/表格渲染无此顺序依赖）
+8. 本页与基准页的**有意分歧点**（其余 runtime 逐字同源）：localStorage 前缀 / 数据 loader（单通道 js，
+   无 list·info API 通道）/ range 变量名与默认值（window.w2mRange，默认 all）/ range 过滤字段（publish_date）
+   / TABS 由 platform 动态生成 / 分栏头部复制入口
+设计关联（旧页）：documents/solutions/web2md-page-buttons-phase2-design-v1.0-20260920.md（v2.0 两按钮契约）
+-->
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <link rel="canonical" href="https://tools.cli.jaden.tech/web2md.html">
+    <link rel="icon" href="/favicon.png">
+    <meta name="theme-color" content="#07c160">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web2MD 文章列表</title>
+    <meta name="description" content="微信文章转 Markdown 的本地台账：已处理清单、标签与关联计数、分栏原文预览。">
+    <meta property="og:title" content="微信文章转 Markdown">
+    <meta property="og:description" content="微信文章转 Markdown 的本地台账：已处理清单、标签与关联计数、分栏原文预览。">
+    <style>
+/* ═══════════════════════════════════════════
+   style-guide.css
+   Layer 1 — CSS 变量 + 基础组件
+   来源：favorite-manager/index.html 深色主题
+   版本：1.0(2026-07-01)
+   ═══════════════════════════════════════════ */
+
+:root {
+  --cobalt-50: #eef2ff;
+  --cobalt-100: #e0e7ff;
+  --cobalt-400: #818cf8;
+  --cobalt-500: #6366f1;
+  --cobalt-600: #4f46e5;
+  --cobalt-700: #4338ca;
+  --cobalt-800: #3730a3;
+  --cobalt-900: #312e81;
+  --cobalt-950: #1e1b4b;
+  --accent-400: #facc15;
+  --accent-500: #eab308;
+  --accent-600: #ca8a04;
+  --surface-800: #1e1e2e;
+  --surface-850: #181825;
+  --surface-900: #11111b;
+  --surface-950: #0a0a14;
+  --text-primary: #f0f0f0;
+  --text-body: #e0e0e0;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+  --text-faint: #555555;
+  --border-strong: #2a2a3e;
+  --border-soft: #1a1a2e;
+  --code-bg: #0d0d1a;
+  --code-text: #b0b0c0;
+  --code-cmd: #e0e0e0;
+  --hero-title-from: #ffffff;
+  --gh-corner-fill: rgba(0,0,0,0.41);
+  --gh-octocat: var(--text-secondary);
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-full: 9999px;
+}
+
+/* ── Light Theme（浅色变量组；模板页另有局部覆盖，此处为基座） ── */
+:root.light {
+  --surface-950: #f5f5f5;
+  --surface-900: #ffffff;
+  --surface-850: #f0f0f0;
+  --surface-800: #e8e8e8;
+  --cobalt-950: #eef2ff;
+  --cobalt-600: #6366f1;
+  --cobalt-700: #4338ca;
+  --cobalt-400: #6366f1;
+  --cobalt-300: #818cf8;
+  --text-primary: #1f2328;
+  --text-body: #333333;
+  --text-secondary: #57606a;
+  --text-muted: #6e7681;
+  --text-faint: #8b949e;
+  --border-strong: #d0d7de;
+  --border-soft: #e5e7eb;
+  --code-bg: #f6f8fa;
+  --code-text: #57606a;
+  --code-cmd: #1f2328;
+  --hero-title-from: #1f2328;
+  --gh-corner-fill: rgba(0,0,0,0.75);
+  --gh-octocat: #ffffff;
+}
+:root.light body { color: var(--text-body); background: var(--surface-950); }
+:root.light h1 { color: var(--text-primary); }
+:root.light h2 { color: var(--text-body); }
+:root.light h3 { color: #333333; }
+:root.light a { color: var(--cobalt-600); }
+:root.light a:hover { color: var(--cobalt-700); }
+:root.light code { background: rgba(0,0,0,0.06); color: #555555; }
+:root.light pre { background: #f0f0f0; border-color: #dddddd; color: #333333; }
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: var(--font-sans);
+  background: var(--surface-950);
+  color: var(--text-body);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1 { font-size: 1.4rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.75rem; }
+h2 { font-size: 1.15rem; font-weight: 600; color: var(--text-body); margin: 1.25rem 0 0.5rem; }
+h3 { font-size: 1rem; font-weight: 600; color: #d0d0d0; margin: 1rem 0 0.4rem; }
+p  { margin-bottom: 0.6rem; }
+a { color: var(--cobalt-400); text-decoration: none; }
+a:hover { color: var(--cobalt-500); text-decoration: underline; }
+code {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  background: rgba(255,255,255,0.06);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+pre {
+  background: #0d0d1a;
+  border: 1px solid #2a2a3e;
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  overflow-x: auto;
+  margin: 0.75rem 0;
+}
+pre code { background: none; padding: 0; }
+
+/* ── Data Table ── */
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table th {
+  position: sticky; top: 0; z-index: 10;
+  background: var(--surface-900);
+  border-bottom: 1px solid #2a2a3e;
+  padding: 8px 10px; text-align: left; font-size: 0.7rem; font-weight: 600;
+  color: #9ca3af; text-transform: uppercase; letter-spacing: 0.05em;
+  white-space: nowrap; user-select: none;
+}
+.data-table th.sortable { cursor: pointer; }
+.data-table th.sortable::after { content: ' \25bc'; font-size: 10px; color: #555; }
+.data-table th.sort-asc::after { content: ' \25b2'; color: var(--cobalt-400); }
+.data-table th.sort-desc::after { content: ' \25bc'; color: var(--cobalt-400); }
+.data-table td {
+  padding: 8px 10px; border-bottom: 1px solid #1a1a2e;
+  font-size: 0.8rem; vertical-align: middle;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.data-table tr { transition: background 0.15s; }
+.data-table tbody tr:hover { background: rgba(79,70,229,0.08); }
+.data-table tbody tr.selected { background: rgba(79,70,229,0.15); }
+
+/* ── Badges ── */
+.badge-red    { background: #3b1f1f; color: #f87171; }
+.badge-yellow { background: #3b351f; color: #fbbf24; }
+.badge-blue   { background: #1e3a5f; color: #60a5fa; }
+.badge-black  { background: #1a1a1a; color: #9ca3af; border: 1px solid #333; }
+.badge { display: inline-block; padding: 1px 8px; border-radius: var(--radius-full); font-size: 0.7rem; margin: 1px; }
+
+/* ── Tag Pill ── */
+.tag-pill {
+  display: inline-block; padding: 1px 8px;
+  border-radius: var(--radius-full);
+  font-size: 0.7rem; margin: 1px;
+  cursor: pointer; transition: opacity 0.15s;
+}
+.tag-pill:hover { opacity: 0.8; }
+
+/* ── Input ── */
+.input-dark {
+  background: #0f0f1a;
+  border: 1px solid #2a2a3e;
+  color: #e0e0e0;
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  outline: none;
+  font-size: 0.85rem;
+  font-family: inherit;
+}
+.input-dark:focus { border-color: var(--cobalt-600); box-shadow: 0 0 0 2px rgba(79,70,229,0.2); }
+.input-dark::placeholder { color: #555; }
+
+/* ── Buttons ── */
+.btn {
+  padding: 6px 14px; border-radius: var(--radius-md);
+  border: none; cursor: pointer; font-size: 0.8rem;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+.btn-primary { background: var(--cobalt-600); color: white; }
+.btn-primary:hover { background: var(--cobalt-700); }
+.btn-danger { background: #dc2626; color: white; }
+.btn-danger:hover { background: #b91c1c; }
+.btn-ghost {
+  background: transparent; color: #9ca3af;
+  border: 1px solid #2a2a3e;
+}
+.btn-ghost:hover { color: #e0e0e0; border-color: #555; }
+.btn-sm { padding: 3px 10px; font-size: 0.72rem; }
+
+/* ── Pager ── */
+.pager { display: flex; gap: 4px; justify-content: center; align-items: center; margin-top: 16px; }
+.pager button { min-width: 32px; }
+
+/* ── Batch Bar ── */
+.batch-bar {
+  display: none;
+  background: var(--cobalt-950);
+  border: 1px solid var(--cobalt-700);
+  border-radius: var(--radius-lg);
+  padding: 10px 16px; margin-bottom: 12px;
+  align-items: center; gap: 12px;
+}
+.batch-bar.active { display: flex; }
+
+/* ── Modal ── */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: none; align-items: center; justify-content: center;
+  z-index: 100;
+}
+.modal-overlay.active { display: flex; }
+.modal-box {
+  background: var(--surface-900);
+  border-radius: var(--radius-xl);
+  padding: 20px 24px;
+  width: 420px; max-width: 90vw;
+  border: 1px solid #2a2a3e;
+}
+.modal-box h3 { font-size: 0.9rem; font-weight: 700; color: #f0f0f0; margin-bottom: 12px; }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+/* ── Utility ── */
+.card { background: var(--surface-900); border: 1px solid #1a1a2e; border-radius: var(--radius-lg); overflow: hidden; }
+.wrapper { max-width: 1400px; margin: 0 auto; padding: 16px 20px; }
+.flex { display: flex; }
+.flex-1 { flex: 1; }
+.gap-2 { gap: 8px; }
+.gap-3 { gap: 12px; }
+.mb-3 { margin-bottom: 12px; }
+.text-xs { font-size: 0.75rem; }
+.text-gray { color: #9ca3af; }
+.w-full { width: 100%; }
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #2a2a3e; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #3a3a5e; }
+
+</style>
+<style>
+/* ── Tabs ── */
+.tabs-row { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+.table-tabs { display:flex; gap:4px; overflow-x:auto; flex-wrap:nowrap; flex:1; min-width:0; }
+.table-tabs:empty { display:none; }
+.tabs-actions { display:none; align-items:center; gap:6px; flex-shrink:0; }
+.tabs-actions:empty { display:none; }
+/* 居右分享/Home 按钮（CL005）: 同尺寸 36px 圆角深底, 图标 emoji 全尺寸 font-size 1rem */
+.home-link, .share-link { display:flex; align-items:center; justify-content:center; width:36px; height:36px;
+  border-radius:8px; background:rgba(0,0,0,0.41); text-decoration:none; font-size:1rem; cursor:pointer;
+  border:none; color:inherit; font-family:inherit; flex-shrink:0; line-height:1; }
+.home-link:hover, .share-link:hover { background:rgba(0,0,0,0.6); }
+.tab-btn {
+  padding:5px 14px; border-radius:6px 6px 0 0; cursor:pointer; font-size:0.72rem; font-weight:500;
+  background:var(--surface-900); color:#6b7280; border:1px solid #1a1a2e; border-bottom:none;
+  white-space:nowrap; transition:all 0.15s; user-select:none;
+}
+.tab-btn:hover { background:#1a1a2e; color:#d1d5db; }
+.tab-btn.active { background:var(--cobalt-950); color:var(--cobalt-400); border-color:var(--cobalt-700); }
+.tab-btn .count { display:inline-block; margin-left:4px; padding:1px 5px; border-radius:9999px;
+  font-size:0.55rem; background:rgba(99,102,241,0.15); color:var(--cobalt-400); }
+.tab-btn.active .count { background:rgba(99,102,241,0.25); }
+
+/* ── Header bar ── */
+.table-header { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+.table-header h1 { font-size:1rem; font-weight:700; margin:0; white-space:nowrap; }
+.table-desc { display:none; margin:-4px 0 10px; font-size:0.78rem; line-height:1.7; color:#9ca3af; word-break:break-word; }
+.table-desc:empty { display:none; }
+/* v3.3.0: 数据文件统计行（读 git-cloner-data.js 的 stats，SCRIPT-MINER-CL023） */
+.gc-stats { display:none;margin:0 0 10px; font-size:0.78rem; color:#9ca3af; }
+.gc-stats:empty { display:none; }
+.stat-pill { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:9999px;
+  background:var(--surface-900); border:1px solid #1a1a2e; font-size:0.65rem; color:#9ca3af; white-space:nowrap; }
+.stat-pill .num { font-weight:700; color:#e0e0e0; font-variant-numeric:tabular-nums; }
+.filter-pill { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:6px;
+  background:rgba(79,70,229,0.15); border:1px solid var(--cobalt-600); font-size:0.65rem; color:var(--cobalt-300); cursor:pointer; white-space:nowrap; }
+.filter-pill:hover { background:rgba(79,70,229,0.25); }
+.filter-pill .fp-close { font-weight:700; margin-left:2px; color:var(--cobalt-400); }
+.data-table td.clickable-cell { cursor:pointer; }
+.data-table td.clickable-cell:hover { background:rgba(79,70,229,0.08); }
+.data-table .cell-pills { }
+.data-table .cell-pill { display:inline-block; padding:0 6px; border-radius:9999px; font-size:0.7rem; line-height:1.5; vertical-align:middle; white-space:nowrap; background:rgba(79,70,229,0.12); color:var(--cobalt-400); border:1px solid rgba(79,70,229,0.2); margin:0 2px; }
+.data-table .cell-pill.pill-clickable { cursor:pointer; }
+.data-table .cell-pill.pill-clickable:hover { background:rgba(79,70,229,0.25); border-color:rgba(79,70,229,0.5); color:#fff; }
+/* ── Videos 视频列 pill（独立类：max-width 不换行 + ellipsis 缩略） ── */
+.data-table .video-pill { display:inline-block; max-width:180px; padding:0 6px; border-radius:9999px; font-size:0.7rem; line-height:1.5; vertical-align:middle; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; background:rgba(79,70,229,0.12); color:var(--cobalt-400); border:1px solid rgba(79,70,229,0.2); margin:1px 2px; cursor:pointer; }
+.data-table .video-pill:hover { background:rgba(79,70,229,0.25); border-color:rgba(79,70,229,0.5); color:#fff; }
+.data-table .video-pill.video-more { color:var(--cobalt-300); border-style:dashed; }
+.data-table tr.keyboard-focus { outline:2px solid var(--cobalt-400); outline-offset:-2px; }
+
+/* ── Batch toolbar ── */
+.batch-bar { display:none; align-items:center; gap:8px; padding:6px 12px; background:rgba(79,70,229,0.12); border:1px solid var(--cobalt-600); border-radius:8px; margin-bottom:8px; }
+.batch-bar.active { display:flex; }
+.batch-bar .bb-text { font-size:0.72rem; color:var(--cobalt-300); font-weight:600; }
+.batch-bar .bb-btn { padding:3px 10px; border-radius:4px; border:1px solid var(--cobalt-600); background:transparent; color:var(--cobalt-400); cursor:pointer; font-size:0.68rem; font-family:inherit; }
+.batch-bar .bb-btn:hover { background:rgba(79,70,229,0.2); }
+
+/* ── Fullscreen ── */
+.wrapper.fullscreen { position:fixed; inset:0; z-index:999; background:var(--surface-950); padding:12px; overflow:auto; }
+.fs-btn { padding:3px 10px; border-radius:4px; border:1px solid #2a2a3e; background:transparent; color:#6b7280; cursor:pointer; font-size:0.68rem; font-family:inherit; }
+.fs-btn:hover { background:rgba(79,70,229,0.1); color:#e0e0e0; }
+
+/* ── Ratio presets dropdown ── */
+.ratio-dropdown { position:absolute; top:100%; right:0; background:var(--surface-900); border:1px solid #2a2a3e; border-radius:8px; z-index:50; min-width:130px; box-shadow:0 4px 16px rgba(0,0,0,0.4); margin-top:4px; display:none; }
+.ratio-dropdown.show { display:block; }
+.ratio-dropdown .ratio-opt { padding:6px 12px; cursor:pointer; font-size:0.72rem; color:#b0b0c0; white-space:nowrap; }
+.ratio-dropdown .ratio-opt:hover { background:rgba(79,70,229,0.1); color:#e0e0e0; }
+.ratio-dropdown .ratio-opt.active { color:var(--cobalt-400); font-weight:600; }
+.ratio-wrap { position:relative; display:inline-block; }
+
+@media print {
+  .table-tabs, .tabs-actions, .table-header, .table-desc, .pager, .toast, .modal-overlay, .qs-overlay,
+  .batch-bar, .col-toggle-wrap, .fs-btn, .split-drag, .split-preview { display: none !important; }
+  .data-table th, .data-table td { color: #000; border-color: #ccc; }
+  .data-table th { background: #f5f5f5; }
+  body { background: #fff; }
+  .wrapper { padding: 0; }
+}
+
+/* ── Frozen columns ── */
+.data-table th.frozen-col, .data-table td.frozen-col {
+  position: sticky; z-index: 11; background: var(--surface-900);
+}
+.data-table th.frozen-col { z-index: 12; }
+.header-search { background:var(--surface-850); border:1px solid #2a2a3e; color:#e0e0e0; padding:5px 10px;
+  border-radius:6px; font-size:0.72rem; outline:none; width:180px; }
+.header-search:focus { border-color:var(--cobalt-600); }
+
+/* ── Table ── */
+.table-wrap { border:1px solid #1a1a2e; border-radius:var(--radius-lg); overflow-x:auto; }
+.data-table { width:100%; min-width:600px; border-collapse:separate; border-spacing:0; table-layout:fixed; }
+.data-table th {
+  position:sticky; top:0; z-index:10; background:var(--surface-900); border-bottom:1px solid #2a2a3e;
+  padding:6px 8px; text-align:left; font-size:0.65rem; font-weight:600; color:#9ca3af;
+  text-transform:uppercase; letter-spacing:0.04em; white-space:nowrap; user-select:none;
+  position:relative;
+}
+.data-table th.sortable { cursor:pointer; }
+.data-table th.sortable:hover { color:var(--cobalt-400); }
+.data-table th.sort-asc::after { content:' ▲'; color:var(--cobalt-400); font-size:9px; }
+.data-table th.sort-desc::after { content:' ▼'; color:var(--cobalt-400); font-size:9px; }
+.data-table th .resize-handle {
+  position:absolute; top:0; right:0; bottom:0; width:5px; cursor:col-resize;
+}
+.data-table th .resize-handle:hover { background:var(--cobalt-600); }
+.data-table td { padding:7px 8px; border-bottom:1px solid #1a1a2e; font-size:0.75rem;
+  vertical-align:middle; max-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.data-table tbody tr { transition:background 0.12s; }
+.data-table tbody tr:hover { background:rgba(79,70,229,0.07); }
+.data-table tbody tr.selected { background:rgba(79,70,229,0.15); }
+.data-table tbody tr.clickable { cursor:pointer; }
+.col-checkbox { width:32px; text-align:center; }
+.col-checkbox input { cursor:pointer; accent-color:var(--cobalt-500); }
+.col-index-num { text-align:center; color:#6b7280; font-size:0.72rem; }
+
+/* ── Actions ── */
+.action-btn { display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px;
+  border-radius:5px; border:1px solid #2a2a3e; cursor:pointer; font-size:0.62rem; color:#6b7280;
+  background:transparent; transition:all 0.15s; margin:0 1px; }
+.action-btn:hover { background:var(--cobalt-600); border-color:var(--cobalt-600); color:white; }
+
+/* ── Column toggle ── */
+.col-toggle-wrap { position:relative; display:inline-block; }
+.col-toggle-dropdown {
+  display:none; position:absolute; top:100%; right:0; z-index:50; margin-top:4px;
+  background:var(--surface-900); border:1px solid #2a2a3e; border-radius:8px; padding:6px 0;
+  min-width:200px; min-height:300px; max-height:400px; overflow-y:auto;
+}
+.col-toggle-dropdown.show { display:block; }
+.col-toggle-dropdown label { display:flex; align-items:center; gap:6px; padding:4px 12px;
+  font-size:0.72rem; color:#d1d5db; cursor:pointer; white-space:nowrap; }
+.col-toggle-dropdown label:hover { background:rgba(79,70,229,0.1); }
+.col-toggle-dropdown input { accent-color:var(--cobalt-500); }
+.col-toggle-dropdown .settings-section { padding:4px 12px 2px; font-size:0.62rem; color:#6b7280; text-transform:uppercase; letter-spacing:0.04em; }
+.col-toggle-dropdown .settings-radio { display:flex; align-items:center; gap:6px; padding:2px 12px; font-size:0.7rem; color:#d1d5db; cursor:pointer; }
+.col-toggle-dropdown .settings-radio input { accent-color:var(--cobalt-500); margin:0; }
+.col-toggle-divider { height:1px; background:#2a2a3e; margin:4px 0; }
+
+/* ── Density ── */
+.data-table.dense td { padding:2px 8px; font-size:0.7rem; }
+.data-table.dense th { padding:3px 8px; font-size:0.6rem; }
+.data-table.comfortable td { padding:10px 12px; font-size:0.82rem; }
+.data-table.comfortable th { padding:10px 12px; font-size:0.72rem; }
+
+/* ── Modal Panel ── */
+.modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; justify-content:center; align-items:center; }
+.modal-overlay.active { display:flex; }
+.modal-panel { background:var(--surface-900); border:1px solid #2a2a3e; border-radius:12px; width:560px; max-width:90vw; max-height:80vh; overflow-y:auto; padding:20px 24px; animation:slideFadeIn 0.2s ease; }
+.modal-panel h3 { font-size:1rem; color:#f0f0f0; margin:0 0 12px; }
+.modal-panel .modal-close { position:absolute; top:12px; right:16px; background:none; border:none; color:#6b7280; cursor:pointer; font-size:1.2rem; }
+.modal-panel .modal-field { display:flex; padding:4px 0; border-bottom:1px solid #1a1a2e; font-size:0.78rem; }
+.modal-panel .modal-field .mf-label { color:#6b7280; width:80px; flex-shrink:0; }
+.modal-panel .modal-field .mf-value { color:#e0e0e0; flex:1; word-break:break-all; }
+.modal-panel .modal-field:last-child { border-bottom:none; }
+
+/* ── Split View ── */
+.wrapper.split-mode {
+  display: grid;
+  grid-template-columns: var(--spl-ratio, 40%) 5px 1fr;
+  grid-template-rows: auto auto 1fr;
+}
+.wrapper.split-mode .tabs-row { grid-column: 1 / -1; }
+.wrapper.split-mode .batch-bar { grid-column: 1 / -1; }
+.wrapper.split-mode .table-main { overflow: auto; min-width: 200px; }
+.wrapper.split-mode .split-drag { display: block !important; grid-column: 2; }
+.wrapper.split-mode .split-preview { display: flex; }
+.split-preview { display:none; flex-direction:column; background:var(--surface-900); border-left:1px solid #2a2a3e;
+  min-width:200px; position:relative; }
+.wrapper.split-mode .split-preview { display:flex; }
+.split-preview-header { padding:10px 14px; border-bottom:1px solid #2a2a3e;
+  font-size:0.82rem; font-weight:600; color:#f0f0f0;
+  display:flex; align-items:center; gap:8px; }
+.split-preview-header .sp-close { margin-left:auto; background:none; border:none; color:#6b7280; cursor:pointer; font-size:1rem; }
+.split-preview-header .sp-nav { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:4px; border:1px solid #2a2a3e; background:transparent; color:#6b7280; cursor:pointer; font-size:0.7rem; font-family:inherit; }
+.split-preview-header .sp-nav:hover { background:rgba(79,70,229,0.1); color:#e0e0e0; }
+.split-preview-header .sp-nav:disabled { opacity:0.3; cursor:default; }
+.split-preview-header .sp-feedback { display:inline-flex; align-items:center; justify-content:center; height:24px; padding:0 6px; border-radius:4px; border:1px solid #2a2a3e; background:transparent; color:#6b7280; cursor:pointer; font-size:0.75rem; font-family:inherit; }
+.split-preview-header .sp-feedback:hover { background:rgba(79,70,229,0.1); color:#e0e0e0; }
+.split-preview-body { flex:1; overflow:auto; padding:14px; }
+.split-preview-body iframe { width:100%; height:70vh; border:none; }
+.split-drag { display:none; width:5px; cursor:col-resize; flex-shrink:0; background:transparent; transition:background 0.15s; }
+.wrapper.split-mode .split-drag { display:block; }
+.split-drag:hover, .split-drag.active { background:var(--cobalt-600); }
+.split-preview .kv-list { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:6px; }
+.split-preview .kv-item { padding:4px 8px; border:1px solid #1a1a2e; border-radius:6px; }
+.split-preview .kv-item .kv-label { font-size:0.62rem; color:#6b7280; }
+.split-preview .kv-item .kv-value { font-size:0.78rem; color:#e0e0e0; word-break:break-all; }
+.split-preview .kv-item-full { grid-column: 1 / -1; }
+.split-preview .kv-item-full .kv-value { white-space:normal; line-height:1.75; word-break:break-word; }
+.data-table tr.split-active { outline:2px solid var(--cobalt-500); }
+.data-table tr.split-active { border-left:3px solid var(--cobalt-500); outline:none; }
+.data-table th.sticky-right, .data-table td.sticky-right {
+  position:sticky; right:0; z-index:5; background:var(--surface-950);
+}
+.data-table th.sticky-right { z-index:15; background:var(--surface-900); }
+.data-table tbody tr:hover td.sticky-right { background:rgba(79,70,229,0.07); }
+.data-table tr.expand-row td { padding:10px 14px; background:rgba(79,70,229,0.06); border-top:1px solid var(--cobalt-700); }
+.data-table tr.expand-row .expand-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:8px; }
+.data-table tr.expand-row .expand-item { padding:6px 10px; border:1px solid #1a1a2e; border-radius:6px; }
+.data-table tr.expand-row .expand-item .ex-label { font-size:0.62rem; color:#6b7280; }
+.data-table tr.expand-row .expand-item .ex-value { font-size:0.78rem; color:#e0e0e0; word-break:break-all; }
+
+/* ── Toast ── */
+.toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); padding:8px 20px;
+  background:var(--cobalt-950); color:#e0e0e0; border-radius:8px; font-size:0.78rem;
+  z-index:9999; border:1px solid var(--cobalt-700); opacity:0; transition:opacity 0.2s; white-space:nowrap; pointer-events:none; }
+.toast.show { opacity:1; }
+
+/* ── Misc ── */
+.empty-state { display:none; text-align:center; padding:48px 20px; color:#6b7280; }
+.empty-state .icon { font-size:2rem; margin-bottom:8px; display:block; }
+.flex-1 { flex:1; }
+
+/* ── Quick Search Overlay (Cmd+F) ── */
+.qs-overlay {
+  position:fixed; inset:0; background:rgba(0,0,0,0.5); backdrop-filter:blur(4px);
+  display:none; justify-content:center; align-items:flex-start; padding-top:15vh; z-index:9999;
+}
+.qs-overlay.active { display:flex; }
+.qs-modal {
+  width:560px; max-width:90vw; background:var(--surface-900);
+  border:1px solid var(--cobalt-700); border-radius:12px;
+  box-shadow:0 20px 60px rgba(0,0,0,0.4); overflow:hidden;
+  animation:qsSlideIn 0.18s ease-out;
+}
+@keyframes qsSlideIn { from{opacity:0;transform:translateY(-12px)} to{opacity:1;transform:translateY(0)} }
+.qs-input-row { display:flex; align-items:center; padding:14px 18px; gap:10px; }
+.qs-input-row .qs-icon { font-size:1.1rem; color:var(--cobalt-400); flex-shrink:0; }
+.qs-input-row input {
+  flex:1; border:none; outline:none; font-size:1rem; color:#e0e0e0;
+  background:transparent; font-family:inherit;
+}
+.qs-input-row input::placeholder { color:#555; }
+.qs-close-btn {
+  padding:4px 12px; border-radius:6px; border:1px solid #2a2a3e;
+  background:transparent; color:#9ca3af; cursor:pointer; font-size:0.72rem;
+  transition:all 0.15s;
+}
+.qs-close-btn:hover { background:#2a2a3e; color:#e0e0e0; }
+.qs-hint { display:flex; justify-content:space-between; padding:4px 18px 12px; font-size:0.62rem; color:#6b7280; }
+/* ── GitHub Corner ── */
+.github-corner { position: fixed; top: 0; right: 0; z-index: 950; color: #9ca3af; pointer-events: none; }
+.github-corner-hit { position: fixed; top: 36px; right: 0; width: 36px; height: 36px; z-index: 951; cursor: pointer; }
+.github-corner:hover .octo-arm { animation: octocat-wave 560ms ease-in-out; }
+@keyframes octocat-wave { 0%,100%{transform:rotate(0)} 20%,60%{transform:rotate(-25deg)} 40%,80%{transform:rotate(10deg)} }
+  
+
+</style>
+<style>
+  /* range tabs（在 runtime tabs 之外，服务端 range 过滤） */
+  .range-tabs {
+    display: flex; gap: 4px; padding: 10px 16px 0 16px;
+    background: var(--surface-900); border-bottom: 1px solid var(--border-strong);
+  }
+  .range-tab {
+    padding: 6px 14px; cursor: pointer; border: 1px solid var(--border-soft);
+    background: var(--surface-950);
+    font-size: 0.72rem; font-weight: 500; color: var(--text-muted);
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    border-bottom: none; transition: all 0.15s;
+  }
+  .range-tab:hover { background: var(--border-soft); color: var(--text-body); }
+  .range-tab.active {
+    color: var(--cobalt-400); border-color: var(--cobalt-700);
+    background: var(--cobalt-950);
+  }
+</style>
+<style>
+/* ── 标签筛选条（组下拉 → 标签多选级联；runtime 内置） ── */
+.tagfilter-bar { display:none; align-items:center; gap:8px; flex-wrap:wrap; padding:6px 10px; margin:0 0 8px;
+  background:var(--surface-900); border:1px solid var(--border-soft); border-radius:var(--radius-lg); }
+.tagfilter-bar .tf-label { font-size:0.68rem; color:var(--text-muted); white-space:nowrap; }
+.tagfilter-bar select { background:var(--surface-850); border:1px solid var(--border-strong); color:var(--text-body);
+  padding:3px 6px; border-radius:var(--radius-sm); font-size:0.7rem; font-family:inherit; outline:none; }
+.tf-multi-wrap { position:relative; display:inline-block; }
+.tf-multi-btn { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:var(--radius-sm);
+  border:1px solid var(--border-strong); background:transparent; color:var(--text-body); cursor:pointer;
+  font-size:0.7rem; font-family:inherit; }
+.tf-multi-btn:hover { border-color:var(--cobalt-600); color:var(--cobalt-400); }
+.tf-multi-btn .tf-count { display:inline-block; padding:0 5px; border-radius:9999px; font-size:0.6rem;
+  background:rgba(99,102,241,0.2); color:var(--cobalt-400); }
+.tf-dropdown { display:none; position:absolute; top:100%; left:0; z-index:60; margin-top:4px; min-width:220px;
+  max-height:320px; overflow-y:auto; background:var(--surface-900); border:1px solid var(--border-strong);
+  border-radius:var(--radius-lg); box-shadow:0 4px 16px rgba(0,0,0,0.4); padding:4px 0; }
+.tf-dropdown.show { display:block; }
+.tf-dropdown .tf-opt { display:flex; align-items:center; gap:6px; padding:4px 12px; font-size:0.72rem;
+  color:var(--text-body); cursor:pointer; white-space:nowrap; }
+.tf-dropdown .tf-opt:hover { background:rgba(79,70,229,0.1); }
+.tf-dropdown .tf-opt input { accent-color:var(--cobalt-500); margin:0; }
+.tf-dropdown .tf-opt-group { margin-left:auto; font-size:0.6rem; color:var(--text-muted); }
+.tf-chips { display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
+.tf-chip { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:9999px;
+  background:rgba(79,70,229,0.15); border:1px solid var(--cobalt-600); color:var(--cobalt-300); font-size:0.65rem; }
+.tf-chip .tf-x { cursor:pointer; font-weight:700; color:var(--cobalt-400); }
+.tagfilter-bar .tf-clear { display:none; align-items:center; padding:3px 8px; border-radius:var(--radius-sm);
+  border:1px solid var(--border-strong); background:transparent; color:var(--text-muted); cursor:pointer;
+  font-size:0.68rem; font-family:inherit; }
+.tagfilter-bar .tf-clear:hover { color:var(--text-primary); border-color:var(--text-muted); }
+
+/* ── tags/list 列（cell-pill 复用既有样式；补空态与关联链接） ── */
+.data-table .cell-pill.cell-pill-empty { color:var(--text-muted); border-color:var(--border-soft); background:transparent; }
+.data-table .related-link { color:var(--cobalt-400); text-decoration:none; }
+.data-table .related-link:hover { text-decoration:underline; }
+
+/* ── 数据文件/同步状态统计行（中性类名；.gc-stats 同视觉） ── */
+.table-stats { display:none; margin:0 0 10px; font-size:0.78rem; line-height:1.9; color:var(--text-secondary); }
+.table-stats:empty { display:none; }
+.table-stats .stat-sep { margin:0 6px; color:var(--text-faint); }
+.table-stats .sync-ok { color:#34d399; }
+.table-stats .sync-warn { color:var(--accent-400); }
+.table-stats code { font-family:var(--font-mono); font-size:0.72rem; }
+@media print { .tagfilter-bar { display:none !important; } }
+</style>
+<style>
+/* ── web2md 页面级样式（CL024 复制摘要 toast；旧页沿用） ── */
+.w2m-toast { position: fixed; right: 20px; bottom: 20px; max-width: 420px; padding: 10px 16px;
+  background: #32353b; color: #fff; border-radius: 6px; font-size: 13px; line-height: 1.5;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.25); opacity: 0; pointer-events: none;
+  transition: opacity 0.2s; z-index: 9999; }
+.w2m-toast.show { opacity: 1; }
+.split-preview-header .sp-tools { display:inline-flex; align-items:center; gap:4px; }
+</style>
+
+<body>
+
+<div class="wrapper">
+
+<!-- range tabs（runtime 之外；本页数据来自 web2md-data.js，range 在本地按 publish_date 过滤） -->
+<div class="range-tabs" id="rangeTabs"></div>
+
+<!-- 🏷 标签筛选条（组下拉 → 标签多选级联 → 前端过滤 + ?tag=&tagGroup=；无标签数据 → 整条隐藏） -->
+<div class="tagfilter-bar" id="tagFilterBar" style="display:none">
+  <span class="tf-label">🏷 标签筛选</span>
+  <select id="tagGroupSelect" onchange="setTagGroup(this.value)"></select>
+  <div class="tf-multi-wrap">
+    <button class="tf-multi-btn" id="tagMultiBtn" onclick="toggleTagFilterDropdown(event)">🏷 选择标签 <span class="tf-caret">▾</span></button>
+    <div class="tf-dropdown" id="tagDropdown"></div>
+  </div>
+  <div class="tf-chips" id="tagChips"></div>
+  <button class="tf-clear" id="tagClearBtn" onclick="clearTagFilter()">✕ 清除</button>
+</div>
+
+<div class="tabs-row">
+  <div class="table-tabs" id="tabsBar"></div>
+  <div class="tabs-actions">
+    <button class="share-link" id="shareBtn" onclick="shareLink()" title="拷贝分享链接">↗️</button>
+  </div>
+</div>
+
+<div class="batch-bar" id="batchBar">
+  <span class="bb-text" id="batchCount">已选 0 条</span>
+  <button class="bb-btn" onclick="selectAllFiltered()">全选</button>
+  <button class="bb-btn" onclick="clearSelection()">取消</button>
+  <button class="bb-btn" onclick="exportSelectedCSV()">📥 导出</button>
+</div>
+
+<div class="table-main" id="tableMain">
+<div class="table-header">
+  <h1>Web2MD 文章列表</h1>
+  <span class="stat-pill"><span class="num" id="statTotal">0</span> 条</span>
+  <span class="stat-pill" style="display:none" id="statFilteredPill"><span class="num" id="statFiltered">0</span> 已筛选</span>
+  <span class="stat-pill" style="display:none" id="statSelectedPill"><span class="num" id="statSelected">0</span> 已选</span>
+  <span class="filter-pill" style="display:none" id="quickFilterPill"></span>
+  <div class="flex-1"></div>
+  <input class="header-search" id="searchInput" placeholder="搜索..." onkeydown="if(event.key==='Enter')doSearch()">
+
+  <button class="btn btn-ghost btn-sm" id="exportBtn" title="导出 CSV" style="display:none">📥</button>
+  <button class="fs-btn" id="fsBtn" onclick="toggleFullscreen()" title="全屏 (F)">⛶</button>
+  <div class="ratio-wrap">
+    <button class="fs-btn" id="ratioBtn" onclick="toggleRatioDropdown()" title="分栏比例">▦</button>
+    <div class="ratio-dropdown" id="ratioDropdown"></div>
+  </div>
+  <div class="col-toggle-wrap">
+    <button class="btn btn-ghost btn-sm" id="colToggleBtn" title="设置">⚙️</button>
+    <div class="col-toggle-dropdown" id="colToggleDropdown"></div>
+  </div>
+</div>
+<div class="table-desc">本地已处理文章（数据源 web2md-data.js，file:// 直开可用）。点标题/关联计数打开分栏详情；🏷 标签列点 pill 或顶部筛选条可按标签筛选（组内并集 · 多标签交集）；actions 提供 `web2md info` 命令、`--ai` 上下文块、命令行句柄与原文链接；⚙️ 面板开列与密度；CMD+F 即时搜索。</div>
+<!-- 数据文件统计 + 同步状态行（契约 stats.{total,updated_at,remote_max_id,fetched_at,unfetched}；缺字段整行不显示） -->
+<div class="table-stats" id="w2mStats" style="display:none"></div>
+
+<div class="table-wrap">
+  <table class="data-table">
+    <thead id="thead"></thead>
+    <tbody id="tbody"></tbody>
+  </table>
+  <div class="empty-state" id="emptyState"><span class="icon">📭</span><span>暂无数据</span></div>
+</div>
+
+<div class="pager" id="pager"></div>
+</div><!-- /table-main -->
+
+<div class="split-drag" id="splitDrag"></div>
+<div class="split-preview" id="splitPreview">
+  <div class="split-preview-header" id="splitPreviewHeader"></div>
+  <div class="split-preview-body" id="splitPreviewBody"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+</div><!-- /wrapper -->
+
+<!-- runtime 内置 Modal Panel（clickModes: modal） -->
+<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal-panel" id="modalPanel"></div>
+</div>
+
+<!-- runtime 内置 Cmd+F Quick Search Overlay -->
+<div class="qs-overlay" id="qsOverlay" onclick="if(event.target===this)quickSearch.close()">
+  <div class="qs-modal">
+    <div class="qs-input-row">
+      <span class="qs-icon">🔍</span>
+      <input id="qsInput" placeholder="搜索..." onkeydown="qsHandleKey(event)" oninput="qsOnInput()">
+      <button class="qs-close-btn" onclick="quickSearch.close()">Esc</button>
+    </div>
+    <div class="qs-hint">
+      <span>Enter 搜索 · Esc 关闭</span>
+      <span id="qsMatchCount"></span>
+    </div>
+  </div>
+</div>
+
+<!-- CL024 复制摘要 toast（web2mdToast 专用；只给摘要不回显全文） -->
+<div class="w2m-toast" id="w2mToast"></div>
+
+<!-- v3.0.0 数据层（生成物；CL038 起移出 git，见 .gitignore；页面为源码框架，生成器只产本文件） -->
+<script src="/web2md-data.js"></script>
+<!-- CL038：数据 js 为生成物、已移出 git ⇒ 缺文件时页面自动检测并提示生成命令 -->
+<script>
+(function () {
+  var CMD = 'web2md browser --cache';
+  function show() {
+    var box = document.createElement('div');
+    box.id = 'web2mdDataMissing';
+    box.style.cssText = 'margin:16px auto;max-width:920px;padding:12px 16px;border-radius:8px;' +
+      'background:#fff4e5;border:1px solid #ffb74d;color:#663c00;font-size:14px;line-height:1.8';
+    box.innerHTML = '⚠️ <b>数据文件缺失</b>：<code>web2md</code> 是生成物，已不再随 git 分发。' +
+      '<br>请先在仓库根目录跑一次：<code>' + CMD + '</code>，生成数据文件后刷新本页。';
+    if (!document.getElementById('web2mdDataMissing')) {
+      document.body.insertBefore(box, document.body.firstChild);
+    }
+  }
+  function check() {
+    if (window.WEB2MD_DATA) return;           // 数据已载入 ⇒ 正常渲染，不打扰
+    if (window.__cl038Probe) { show(); return; }
+    window.__cl038Probe = true;
+    show();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', check);
+  else check();
+})();
+</script>
+
+
+<script>
+(function() {
+  /* ═══════════════════════════════════════════
+     Layout Table v2.0 — 增强版
+     新增：Tabs/Sort指示/数字排序/中文排序/统计/操作列/Toast/
+           列可见性/行选择/CSV导出/行点击/列宽拖拽/Tab记忆/实时搜索
+     ═══════════════════════════════════════════ */
+
+  /* ═══════════════════════════════════════════
+     web2md 配置（按 html-gen table 规范；runtime 与 efficiency/git-cloner.html 同源）
+     契约真源: documents/solutions/web2md-gitcloner-linkage-tags-plugin-sync-design-v1.0-20260925.md §15.5
+     标题/描述为单源：见 <h1> 与 .table-desc（不保留未消费的 JS 常量）
+     ═══════════════════════════════════════════ */
+
+  // 列（契约 data js: items[].{title,platform,author,publish_date,article_id,tags,projects,completed_steps}
+  //   缺字段一律优雅降级：标签列空、关联列 0、状态空 —— 不报错、不伪造）：
+  //  - title        标题（freeze 左冻结 + onCellClick=split 点击进分栏）
+  //  - platform     平台 / author 作者 / publish_date 日期（datetime 排序）
+  //  - tags         标签 pills（type=tags，点 pill = 按标签筛选）
+  //  - projects     关联项目（type=list，数量 + 点击分栏逐条列 owner_repo/克隆态）
+  //  - completed_steps 状态（数组 → 顿号连接展示）
+  //  - actions      右固定列：📋 复制命令 / 🤖 复制给 AI / ⌨️ 复制句柄 / 📄 打开原文（hrefKey=url）
+  //  扩展列全部 initialHidden（⚙️ 面板可开；分栏详情/CSV 全列渲染）
+  const COLUMNS = [
+    {"key": "title", "label": "标题", "sortable": true, "locale": "zh", "width": "320px",
+     "freeze": true, "onCellClick": "split", "splitFull": true},
+    {"key": "platform", "label": "平台", "sortable": true, "width": "110px"},
+    {"key": "author", "label": "作者", "sortable": true, "width": "110px"},
+    {"key": "publish_date", "label": "日期", "type": "datetime", "sortable": true, "width": "105px"},
+    {"key": "tags", "label": "🏷 标签", "type": "tags", "tagClick": true,
+     "width": "190px", "splitFull": true},
+    {"key": "projects", "label": "🔗 关联项目", "type": "list",
+     "width": "110px", "onCellClick": "split", "listLabel": "owner_repo", "listSub": "cloned"},
+    {"key": "completed_steps", "label": "状态", "sortable": true, "width": "130px", "splitFull": true},
+    {"key": "actions", "label": "操作", "type": "actions", "width": "180px",
+     "stickyRight": true, "actions": [
+      {"icon": "📋", "label": "复制 web2md info 命令", "handler": "web2mdCopyInfo"},
+      {"icon": "🤖", "label": "复制 AI 上下文块（元信息 + 智读分析）", "handler": "web2mdCopyAiBlock"},
+      {"icon": "⌨️", "label": "复制命令行句柄（agent 自取最新）", "handler": "web2mdCopyHandle"},
+      {"icon": "📄", "label": "打开原文", "hrefKey": "url"}
+    ]},
+    // ── 契约扩展字段（初始收起；分栏详情全列渲染时显示）──
+    {"key": "url", "label": "原文地址", "width": "280px", "initialHidden": true, "splitFull": true},
+    {"key": "article_id", "label": "文章 ID", "width": "160px", "initialHidden": true},
+    {"key": "reading_suggestion", "label": "阅读建议", "width": "120px", "initialHidden": true},
+    {"key": "last_updated", "label": "最近变更", "type": "datetime", "width": "150px", "initialHidden": true}
+  ];
+
+  // OPTIONS：search 搜索框默认开（CMD+F 行为）+ clickModes split/modal + columnsSplit 分栏列集 +
+  //          searchFields 限定字段（值走 cellText → tags 数组按展示名匹配）+ exportCSV 开导出
+  const OPTIONS = {
+    "search": true,
+    "searchFields": ["title", "platform", "author", "tags"],
+    "clickModes": ["split", "modal"],
+    "columnsSplit": ["title", "tags", "projects", "actions"],
+    "exportCSV": true
+  };
+
+  // DATA 初始空数组；启动时由 w2mLoadRange() 从 web2md-data.js（同步）填充
+  const DATA = [];
+
+  // range tabs（不走 runtime tabs，自定义切换；本页数据在本地按日期字段过滤）
+  const RANGE_TABS = [
+    {"key": "today", "label": "今天"},
+    {"key": "7d", "label": "最近7天"},
+    {"key": "30d", "label": "最近30天"},
+    {"key": "all", "label": "所有"}
+  ];
+  const RANGE_EMPTY = {
+    "today": "📭 今日无文章",
+    "7d": "📭 最近7天无文章",
+    "30d": "📭 最近30天无文章",
+    "all": "📭 暂无文章"
+  };
+
+  // TABS 起手为空，数据到位后由 buildPlatformTabs() 按 platform 去重动态填充
+  // （TABS[0] = 「全部」= runtime 的全量 tab 语义；key 直接取 platform 值，中文平台名可直接入 URL）
+  const TABS = [];
+
+  // 暴露 RANGE_TABS/RANGE_EMPTY 到 window 供外部 script（selectRange/initRangeTabs）使用
+  window.RANGE_TABS = RANGE_TABS;
+  window.RANGE_EMPTY = RANGE_EMPTY;
+
+  // Support columnsSplit for dedicated split-mode columns
+  if (OPTIONS && OPTIONS.columnsSplit) {
+    COLUMNS._splitCols = OPTIONS.columnsSplit;
+  }
+
+  // CL009: GitHub Issue 反馈通道 — options.feedback={repo,dataset,key,altKey,template}
+  // 未配置 repo（或显式空串）→ 不渲染反馈按钮（既有页面零变更）
+  const FB_CFG  = (OPTIONS && OPTIONS.feedback) || null;
+  const FB_REPO = (FB_CFG && FB_CFG.repo) ? String(FB_CFG.repo) : '';
+
+  const PAGE_SIZE = (OPTIONS && OPTIONS.pageSize) || 30;
+  const showExport = OPTIONS && OPTIONS.exportCSV;
+  const showRowSelect = OPTIONS && OPTIONS.rowSelect;
+  const showIndex = OPTIONS && OPTIONS.showIndex;
+  const columnResize = !(OPTIONS && OPTIONS.columnResize === false);  // true by default
+  const showSearch = OPTIONS ? OPTIONS.search !== false : true;
+
+  let filtered = DATA.slice(), currentPage = 1, activeTab = '', sortKey = '', sortAsc = true;
+  let selectedRows = {}, colVisibility = {};
+  // Restore column visibility from localStorage
+  try { colVisibility = JSON.parse(localStorage.getItem('web2md:table:col-visibility')) || {}; } catch(e) {}
+  // initialHidden: 表格默认隐藏列（⚙️ 可开启；分栏详情全列渲染不受影响）；用户切换过则尊重用户
+  COLUMNS.forEach(function(c) { if (c.initialHidden && colVisibility[c.key] === undefined) colVisibility[c.key] = false; });
+  let density = 'default', clickMode = 'tab', splitRatio = 40, splitActive = false;
+  let expandedIdx = -1;
+  let quickFilter = null;  // {key, value}
+
+  // Restore from localStorage
+  try { density = localStorage.getItem('web2md:table:density') || 'default'; } catch(e) {}
+  try { clickMode = localStorage.getItem('web2md:table:click-mode') || 'tab'; } catch(e) {}
+  try { splitRatio = parseFloat(localStorage.getItem('web2md:table:split-ratio')) || 40; } catch(e) {}
+
+  /* ── Security: HTML escape ── */
+  function escapeHtml(text) {
+    var d = document.createElement('div');
+    d.textContent = text;
+    return d.innerHTML;
+  }
+
+  /* ── CL036: 数组/对象值 → 展示文本（tags/list 列与搜索/导出/分栏详情共用） ──
+     契约里 tags/projects/articles 均为对象数组：直接 String() 会落 [object Object]，
+     故统一走 cellText（数组 → 顿号连接；对象 → 取首个非空命名键）。 */
+  function pillText(x) {
+    if (x === null || x === undefined) return '';
+    if (typeof x === 'object') {
+      return String(x.display_name || x.name || x.label || x.title || x.owner_repo || x.id || x.url || '');
+    }
+    return String(x);
+  }
+  function cellText(v) {
+    if (v === null || v === undefined) return '';
+    if (Array.isArray(v)) return v.map(pillText).filter(function(s) { return s !== ''; }).join('、');
+    if (typeof v === 'object') return pillText(v);
+    return String(v);
+  }
+  // 标签 id（筛选与 ?tag= URL 用；契约 tags:[{id,display_name}]，兼容纯字符串/顿号串）
+  function tagIdOf(x) {
+    if (x && typeof x === 'object') return String(x.id || x.name || '');
+    return (x === null || x === undefined) ? '' : String(x);
+  }
+  function normalizeTagArray(v) {
+    if (v === null || v === undefined || v === '') return [];
+    if (Array.isArray(v)) return v.filter(function(x) { return x !== null && x !== undefined && x !== ''; });
+    return String(v).split(/[,，、/]+/).map(function(s) { return s.trim(); }).filter(Boolean);
+  }
+  // 行标签 id 集合：loader 预算 _tagIds 优先（快），缺失/未归一 → 即时从 tags 派生（健壮）
+  function rowTagIds(row) {
+    if (row && row._tagIds) return row._tagIds;
+    var out = [];
+    normalizeTagArray(row && row.tags).forEach(function(t) {
+      var id = tagIdOf(t);
+      if (id && out.indexOf(id) === -1) out.push(id);
+    });
+    return out;
+  }
+
+  /* ── Visible columns (respects visibility toggle + split mode preview filter) ── */
+  function visibleCols(opts) {
+    opts = opts || {};
+    return COLUMNS.filter(function(c) {
+      if (opts.requireKey && !c.key) return false;
+      if (opts.excludeActions && c.type === 'actions') return false;
+      if (c.hide) return false;
+      if (colVisibility[c.key] === false) return false;
+      // split mode: use columnsSplit if defined, else preview filter
+      if (splitActive) {
+        if (COLUMNS._splitCols) {
+          return COLUMNS._splitCols.indexOf(c.key) !== -1;
+        }
+        var hasAnyPreview = COLUMNS.some(function(x) { return x.preview === true; });
+        if (hasAnyPreview && c.preview !== true) return false;
+      }
+      return true;
+    });
+  }
+
+  /* ── Tabs ── */
+  function buildTabs() {
+    const bar = document.getElementById('tabsBar');
+    if (!TABS || !TABS.length) { bar.innerHTML = ''; return; }
+    if (!activeTab) {
+      try { activeTab = localStorage.getItem('web2md:table:tab'); } catch(e) {}
+      if (!activeTab || !TABS.find(function(t){return t.key===activeTab})) activeTab = TABS[0].key;
+    }
+    bar.innerHTML = TABS.map(function(t) {
+      var cnt = t.key === TABS[0].key ? DATA.length :
+        DATA.filter(function(row) { return matchTab(row, t); }).length;
+      return '<div class="tab-btn'+(t.key===activeTab?' active':'')+'" onclick="switchTab(\''+t.key+'\')">'+t.label+'<span class="count">'+cnt+'</span></div>';
+    }).join('');
+  }
+
+  function matchTab(row, tab) {
+    if (tab.match) return row[tab.match] === tab.key;
+    if (tab.contains) {
+      var val = row[tab.field || 'profiles'] || '';
+      var target = tab.value || tab.key;
+      return val.split(/[,，、/]+/).map(function(s){return s.trim();}).indexOf(target) !== -1;
+    }
+    if (tab.field) return row[tab.field] === tab.key;
+    return (row.group || row.category || '') === tab.key;
+  }
+
+  /* ── Filter & Sort ── */
+  function applyFilters() {
+    var q = document.getElementById('searchInput').value.toLowerCase().trim();
+    filtered = DATA.slice();
+    // Tab filter
+    if (activeTab && TABS && TABS.length && activeTab !== TABS[0].key) {
+      var tab = TABS.find(function(t){return t.key===activeTab;});
+      if (tab) filtered = filtered.filter(function(row){return matchTab(row, tab);});
+    }
+    // Search filter（options.searchFields 限定字段，默认全列向后兼容；v3.4.0: 值走 cellText →
+    // tags/articles 等数组列按展示文本匹配，不再落 [object Object] 噪音）
+    if (q) {
+      var searchKeys = (OPTIONS && OPTIONS.searchFields) ||
+        COLUMNS.filter(function(c){ return c.type !== 'actions' && c.type !== 'videos' && c.key; }).map(function(c){ return c.key; });
+      filtered = filtered.filter(function(row) {
+        return searchKeys.some(function(k) {
+          return cellText(row[k]).toLowerCase().indexOf(q) !== -1;
+        });
+      });
+    }
+    // Quick filter (cell click / pill click)
+    if (quickFilter) {
+      filtered = filtered.filter(function(row) {
+        var v = cellText(row[quickFilter.key]);
+        if (quickFilter.mode === 'contains') {
+          // 标签筛选：顿号/逗号切分后包含匹配
+          return v.split(/[,，、/]+/).map(function(s){return s.trim();}).indexOf(quickFilter.value) !== -1;
+        }
+        return v === quickFilter.value;
+      });
+    }
+    // 标签筛选（CL036：组内并集 + 多标签交集，与 CLI `list --tag/--tag-group` 同口径）
+    if (tagFilterActive()) {
+      filtered = filtered.filter(tagFilterMatch);
+    }
+    // Sort (primary + secondary combined for stable ordering)
+    if (sortKey) {
+      var col = COLUMNS.find(function(c){return c.key===sortKey;});
+      var isNum = col && col.type === 'number';
+      var isDate = col && col.type === 'datetime';
+      var loc = col && col.locale;
+      var col2 = sortKey2 ? COLUMNS.find(function(c){return c.key===sortKey2;}) : null;
+      var isNum2 = col2 && col2.type === 'number';
+      var isDate2 = col2 && col2.type === 'datetime';
+      var loc2 = col2 && col2.locale;
+      filtered.sort(function(a, b) {
+        // Primary key
+        var va = a[sortKey], vb = b[sortKey];
+        if (va === undefined || va === null) va = '';
+        if (vb === undefined || vb === null) vb = '';
+        var cmp;
+        if (isNum) { va = parseFloat(va)||0; vb = parseFloat(vb)||0; cmp = va - vb; }
+        else if (isDate) { va = Date.parse(va) || 0; vb = Date.parse(vb) || 0; cmp = va - vb; }
+        else { va = String(va); vb = String(vb); cmp = loc ? va.localeCompare(vb, loc) : va.localeCompare(vb); }
+        if (cmp !== 0) return sortAsc ? cmp : -cmp;
+        // Secondary key (only when primary equal)
+        if (col2 && sortKey2 !== sortKey) {
+          var va2 = a[sortKey2], vb2 = b[sortKey2];
+          if (va2 === undefined || va2 === null) va2 = '';
+          if (vb2 === undefined || vb2 === null) vb2 = '';
+          var cmp2;
+          if (isNum2) { va2 = parseFloat(va2)||0; vb2 = parseFloat(vb2)||0; cmp2 = va2 - vb2; }
+          else if (isDate2) { va2 = Date.parse(va2) || 0; vb2 = Date.parse(vb2) || 0; cmp2 = va2 - vb2; }
+          else { va2 = String(va2); vb2 = String(vb2); cmp2 = loc2 ? va2.localeCompare(vb2, loc2) : va2.localeCompare(vb2); }
+          return sortAsc2 ? cmp2 : -cmp2;
+        }
+        return 0;
+      });
+    }
+  }
+
+  /* ═══════════════════════════════════════════
+     CL036 标签筛选（组下拉 → 标签多选级联 → 前端过滤 + URL 写回 ?tag=&tagGroup=）
+     口径与 CLI 同源：多标签 = 交集（`list --tag a --tag b`）；标签组 = 组内并集（`list --tag-group g`）
+     标签库：数据 js 的 taxonomy（或顶层 groups/tags）优先；缺失 → 从行内 tags 聚合（仅缺组信息，仍可筛选）
+     ═══════════════════════════════════════════ */
+  var TAG_FILTER_KEY = 'web2md:table:tag-filter';
+  var TAG_INDEX = {groups: [], tags: []};
+  var tagFilter = {group: '', tags: []};
+
+  function tagById(id) {
+    return TAG_INDEX.tags.find(function(t) { return t.id === id; }) || null;
+  }
+  function tagDisplay(id) {
+    var t = tagById(id);
+    return t ? t.display_name : String(id);
+  }
+  function groupDisplay(id) {
+    var g = TAG_INDEX.groups.find(function(x) { return x.id === id; });
+    return g ? g.display_name : String(id);
+  }
+  function tagFilterActive() { return !!(tagFilter.group || tagFilter.tags.length); }
+
+  // 行是否命中当前筛选：多标签取交集 + 组取组内并集（缺 tags 字段的行 = 无标签，仅在启用筛选时被排除）
+  function tagFilterMatch(row) {
+    if (tagFilter.tags.length) {
+      var ids = rowTagIds(row);
+      for (var i = 0; i < tagFilter.tags.length; i++) {
+        if (ids.indexOf(tagFilter.tags[i]) === -1) return false;
+      }
+    }
+    if (tagFilter.group) {
+      var gids = TAG_INDEX.tags.filter(function(t) { return t.group_id === tagFilter.group; })
+                              .map(function(t) { return t.id; });
+      if (!gids.length) return false;
+      var rowIds = rowTagIds(row);
+      if (!gids.some(function(id) { return rowIds.indexOf(id) !== -1; })) return false;
+    }
+    return true;
+  }
+
+  // 标签库构建（loader 在数据到位后调用；DATA 已填充）
+  window.tableBuildTagIndex = function(data) {
+    var idx = {groups: [], tags: []};
+    var seen = {}, gseen = {};
+    function addGroup(g) {
+      var id = String((g && (g.id || g.name)) || '');
+      if (!id || gseen[id]) return;
+      gseen[id] = 1;
+      idx.groups.push({id: id, display_name: String((g && (g.display_name || g.name)) || id)});
+    }
+    function addTag(t) {
+      var id = tagIdOf(t);
+      if (!id || seen[id]) return;
+      seen[id] = 1;
+      var gid = (t && typeof t === 'object' && t.group_id) ? String(t.group_id) : '';
+      idx.tags.push({id: id,
+                     display_name: (t && typeof t === 'object') ? String(t.display_name || t.name || id) : id,
+                     group_id: gid});
+      if (gid) addGroup({id: gid, display_name: (t && t.group_display_name) || gid});
+    }
+    var tax = (data && data.taxonomy) || {};
+    ((tax.groups || (data && data.groups)) || []).forEach(addGroup);
+    ((tax.tags || (data && data.tags)) || []).forEach(addTag);
+    DATA.forEach(function(row) {
+      normalizeTagArray(row && row.tags).forEach(addTag);
+    });
+    idx.tags.sort(function(a, b) { return a.display_name.localeCompare(b.display_name, 'zh'); });
+    idx.groups.sort(function(a, b) { return a.display_name.localeCompare(b.display_name, 'zh'); });
+    TAG_INDEX = idx;
+    renderTagFilterUI();
+    return idx;
+  };
+
+  function persistTagFilter() {
+    try { localStorage.setItem(TAG_FILTER_KEY, JSON.stringify(tagFilter)); } catch(e) {}
+  }
+
+  // 起手快照读法：loader 会在首次 syncUrlState 前把 ?tag/?tagGroup= 快照到 window.tablePendingTagState
+  // （syncUrlState 会把尚未生效的 tag 参数从 URL 剔除，之后再读 location.search 就晚了 —— 与 ?split 同坑）
+  function readUrlTagState() {
+    try {
+      var p = new URLSearchParams(location.search);
+      var g = p.get('tagGroup');
+      var ts = p.getAll('tag');
+      if (g !== null || ts.length) return {group: g || '', tags: ts};
+    } catch(e) {}
+    return null;
+  }
+
+  // 恢复优先级：URL(?tag=&tagGroup=) > localStorage（与 range 同口径）；非法值忽略，不报错
+  window.tableRestoreTagState = function() {
+    var fromUrl = (window.tablePendingTagState === undefined) ? readUrlTagState() : window.tablePendingTagState;
+    var state = fromUrl;
+    if (!state) {
+      try { state = JSON.parse(localStorage.getItem(TAG_FILTER_KEY)); } catch(e) { state = null; }
+    }
+    if (!state) { renderTagFilterUI(); return; }
+    var gid = String(state.group || '');
+    tagFilter.group = (gid && TAG_INDEX.groups.some(function(x) { return x.id === gid; })) ? gid : '';
+    var ids = (state.tags || []).map(String).filter(function(id) { return !!tagById(id); });
+    tagFilter.tags = ids.filter(function(id, i) { return ids.indexOf(id) === i; });
+    renderTagFilterUI();
+    if (tagFilterActive()) { currentPage = 1; render(); syncUrlState(); }
+  };
+
+  // 组下拉：切换后标签多选列表按组级联（已选标签保留 —— 不因切换组静默丢筛选）
+  window.setTagGroup = function(gid) {
+    tagFilter.group = gid || '';
+    persistTagFilter();
+    renderTagFilterUI();
+    currentPage = 1;
+    render();
+    syncUrlState();
+  };
+
+  window.toggleTagFilterId = function(id) {
+    id = String(id || '');
+    if (!id) return;
+    var i = tagFilter.tags.indexOf(id);
+    if (i === -1) tagFilter.tags.push(id); else tagFilter.tags.splice(i, 1);
+    persistTagFilter();
+    renderTagFilterUI();
+    currentPage = 1;
+    render();
+    syncUrlState();
+  };
+
+  window.clearTagFilter = function() {
+    tagFilter = {group: '', tags: []};
+    persistTagFilter();
+    renderTagFilterUI();
+    currentPage = 1;
+    render();
+    syncUrlState();
+  };
+
+  window.toggleTagFilterDropdown = function(e) {
+    if (e && e.stopPropagation) e.stopPropagation();
+    var dd = document.getElementById('tagDropdown');
+    if (!dd) return;
+    dd.classList.toggle('show');
+  };
+
+  // 筛选条渲染：无任何标签 → 整条隐藏（缺 tags 字段的降级态）
+  function renderTagFilterUI() {
+    var bar = document.getElementById('tagFilterBar');
+    if (!bar) return;
+    if (!TAG_INDEX.tags.length) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+    bar.style.display = 'flex';
+    var gsel = document.getElementById('tagGroupSelect');
+    if (gsel) {
+      var opts = ['<option value="">全部组</option>'];
+      TAG_INDEX.groups.forEach(function(g) {
+        opts.push('<option value="' + escapeHtml(g.id) + '">' + escapeHtml(g.display_name) + '</option>');
+      });
+      gsel.innerHTML = opts.join('');
+      gsel.value = tagFilter.group;
+    }
+    // 级联：选组后仅列该组标签；组内无标签（taxonomy 缺组信息）→ 回退全量，不出现空下拉
+    var listTags = TAG_INDEX.tags.filter(function(t) { return !tagFilter.group || t.group_id === tagFilter.group; });
+    if (!listTags.length) listTags = TAG_INDEX.tags;
+    var dd = document.getElementById('tagDropdown');
+    if (dd) {
+      dd.innerHTML = listTags.map(function(t) {
+        var on = tagFilter.tags.indexOf(t.id) !== -1;
+        return '<label class="tf-opt"><input type="checkbox"' + (on ? ' checked' : '') +
+          ' onchange="toggleTagFilterId(\'' + escapeAttr(t.id) + '\')">' +
+          '<span>' + escapeHtml(t.display_name) + '</span>' +
+          ((t.group_id && !tagFilter.group) ? '<span class="tf-opt-group">' + escapeHtml(groupDisplay(t.group_id)) + '</span>' : '') +
+          '</label>';
+      }).join('');
+    }
+    var btn = document.getElementById('tagMultiBtn');
+    if (btn) {
+      btn.innerHTML = '🏷 选择标签' + (tagFilter.tags.length ? ' <span class="tf-count">' + tagFilter.tags.length + '</span>' : '') +
+        ' <span class="tf-caret">▾</span>';
+    }
+    var chips = document.getElementById('tagChips');
+    if (chips) {
+      var parts = [];
+      if (tagFilter.group) {
+        parts.push('<span class="tf-chip" title="标签组：组内并集">组: ' + escapeHtml(groupDisplay(tagFilter.group)) +
+          '<span class="tf-x" onclick="event.stopPropagation();setTagGroup(\'\')">✕</span></span>');
+      }
+      tagFilter.tags.forEach(function(id) {
+        parts.push('<span class="tf-chip" title="已选标签：多标签取交集">' + escapeHtml(tagDisplay(id)) +
+          '<span class="tf-x" onclick="event.stopPropagation();toggleTagFilterId(\'' + escapeAttr(id) + '\')">✕</span></span>');
+      });
+      chips.innerHTML = parts.join('');
+    }
+    var clr = document.getElementById('tagClearBtn');
+    if (clr) clr.style.display = tagFilterActive() ? 'inline-flex' : 'none';
+  }
+
+  // 点空白关闭标签多选下拉
+  document.addEventListener('click', function(e) {
+    var dd = document.getElementById('tagDropdown');
+    if (!dd || !dd.classList.contains('show')) return;
+    var wrap = document.querySelector('.tf-multi-wrap');
+    if (wrap && wrap.contains(e.target)) return;
+    dd.classList.remove('show');
+  });
+
+  /* ── Render ── */
+  function render() {
+    applyFilters();
+    if (!sortKey && TABS && TABS.length) {
+      // Default sort: keep original order within tab
+    }
+    updateStats();
+    var totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    if (currentPage > totalPages) currentPage = totalPages;
+    var start = (currentPage - 1) * PAGE_SIZE;
+    var pageData = filtered.slice(start, start + PAGE_SIZE);
+
+    var emptyEl = document.getElementById('emptyState');
+    if (filtered.length === 0) { emptyEl.style.display = 'block'; }
+    else { emptyEl.style.display = 'none'; }
+
+    var tbody = document.getElementById('tbody');
+    if (!pageData.length) { tbody.innerHTML = ''; renderPager(totalPages); return; }
+
+    var cols = visibleCols();
+    // 第 1 个可见非 actions 列 (用于默认分栏)
+    var firstKeyCol = cols.find(function(c) { return c.type !== 'actions'; });
+    var frozenOffsets = [];
+    var fo = 0;
+    cols.forEach(function(c) { frozenOffsets.push(c.freeze ? ' style="left:' + fo + 'px"' : ''); if (c.freeze) fo += 120; });
+
+    tbody.innerHTML = pageData.map(function(row, pi) {
+      var rowIdx = start + pi;
+      var rowClass = [];
+      if (selectedRows[rowIdx]) rowClass.push('selected');
+      if (isRowClickable(row)) rowClass.push('clickable');
+      var rowHtml = '<tr class="'+rowClass.join(' ')+'"'+(isRowClickable(row)?' onclick="handleRowClick('+rowIdx+')"':'')+'>';
+      if (showRowSelect) {
+        rowHtml += '<td class="col-checkbox"><input type="checkbox" '+(selectedRows[rowIdx]?'checked':'')+' onclick="event.stopPropagation();toggleRow('+rowIdx+')"></td>';
+      }
+      if (showIndex) {
+        rowHtml += '<td class="col-index-num">' + (rowIdx + 1) + '</td>';
+      }
+      cols.forEach(function(col) {
+        if (col.type === 'actions') {
+          var stickyCls2 = col.stickyRight ? ' sticky-right' : '';
+          rowHtml += '<td style="white-space:nowrap" class="'+stickyCls2.trim()+'">'+renderActions(col, row)+'</td>';
+        } else {
+          var val = row[col.key];
+          if (col.type === 'pills') {
+              var items = (val || '').toString().split(/[,，、/]+/).map(function(s){return s.trim();}).filter(Boolean);
+              // pillFilter 默认开: 标签点击筛选, pillFilter: false 可关闭
+              var pillsHtml = items.map(function(s){
+                return '<span class="cell-pill'+(col.pillFilter !== false ? ' pill-clickable' : '')+'"'+
+                  (col.pillFilter !== false ? ' onclick="event.stopPropagation();quickFilterBy(\''+escapeAttr(col.key)+'\',\''+escapeAttr(s)+'\',\'contains\')"' : '')+
+                  '>'+escapeHtml(s)+'</span>';
+              }).join('');
+              var freezeCls = col.freeze ? ' frozen-col' : '';
+              var stickyCls = col.stickyRight ? ' sticky-right' : '';
+              var freezeStyle = frozenOffsets[cols.indexOf(col)] || '';
+              // pills 列整格点击：onCellClick:'split' 时打开分栏（pill 标签点击仍为筛选，stopPropagation 隔离）
+              // CL009: 携带列 key，反馈链接可预填 field
+              var pillsKey = JSON.stringify(col.key).replace(/"/g, '&quot;');
+              var pillsTdOnclick = col.onCellClick === 'split' ? ' onclick="event.stopPropagation();openSplitAt('+rowIdx+','+pillsKey+')"' : '';
+              rowHtml += '<td class="clickable-cell cell-pills'+(col.class?' '+col.class:'')+freezeCls+stickyCls+'"'+pillsTdOnclick+freezeStyle+'>'+pillsHtml+'</td>';
+              return;
+            }
+            if (col.type === 'tags') {
+              // CL036 标签列：契约 tags:[{id,display_name}]（兼容字符串数组/顿号串）
+              //  col.tagClick=true → 点 pill = 切换标签筛选（stopPropagation 隔离行/格点击）
+              var tagArr = Array.isArray(val) ? val : normalizeTagArray(val);
+              var tagFreeze = col.freeze ? ' frozen-col' : '';
+              var tagSticky = col.stickyRight ? ' sticky-right' : '';
+              var tagStyle = frozenOffsets[cols.indexOf(col)] || '';
+              var tagHtml = tagArr.map(function(t) {
+                var name = pillText(t);
+                if (!name) return '';
+                if (col.tagClick) {
+                  return '<span class="cell-pill pill-clickable" title="按标签筛选：' + escapeHtml(name) + '"' +
+                    ' onclick="event.stopPropagation();toggleTagFilterId(\'' + escapeAttr(tagIdOf(t)) + '\')">' +
+                    escapeHtml(name) + '</span>';
+                }
+                return '<span class="cell-pill">' + escapeHtml(name) + '</span>';
+              }).join('');
+              rowHtml += '<td class="clickable-cell cell-pills' + (col.class ? ' ' + col.class : '') + tagFreeze + tagSticky + '"' +
+                ' onclick="event.stopPropagation();openSplitAt(' + rowIdx + ',' + JSON.stringify(col.key).replace(/"/g, '&quot;') + ')"' +
+                tagStyle + '>' + tagHtml + '</td>';
+              return;
+            }
+            if (col.type === 'list') {
+              // CL036 关联列：条目数（千分位）+ 整格点击分栏列详情；计数缺省回退 col.countKey
+              var listArr = Array.isArray(val) ? val : [];
+              var listCnt = listArr.length;
+              if (!listCnt && col.countKey) listCnt = parseInt(row[col.countKey], 10) || 0;
+              var listFreeze = col.freeze ? ' frozen-col' : '';
+              var listSticky = col.stickyRight ? ' sticky-right' : '';
+              var listStyle = frozenOffsets[cols.indexOf(col)] || '';
+              var cntCls = listCnt > 0 ? 'cell-pill pill-clickable' : 'cell-pill cell-pill-empty';
+              rowHtml += '<td class="clickable-cell cell-pills' + (col.class ? ' ' + col.class : '') + listFreeze + listSticky + '"' +
+                ' title="' + (listCnt > 0 ? '点击分栏查看关联条目' : '无关联条目') + '"' +
+                ' onclick="event.stopPropagation();openSplitAt(' + rowIdx + ',' + JSON.stringify(col.key).replace(/"/g, '&quot;') + ')"' +
+                listStyle + '><span class="' + cntCls + '">' + Number(listCnt).toLocaleString('en-US') + '</span></td>';
+              return;
+            }
+            if (col.type === 'videos') {
+              // 视频列：每视频一个 pill [图标] title (duration)；maxShow 折叠 "+N"，点击展开全部（不折叠回，re-render 重置）
+              var videos = val;
+              var vMaxShow = (col.videos && typeof col.videos.maxShow === 'number') ? col.videos.maxShow : 3;
+              var vCount = Array.isArray(videos) ? videos.length : 0;
+              var vVisible = Math.min(vCount, vMaxShow);
+              var vHtml = '';
+              for (var vi = 0; vi < vVisible; vi++) vHtml += renderVideoPill(videos[vi]);
+              var vRestHtml = '';
+              if (vCount > vVisible) {
+                vRestHtml = '<span class="video-rest" style="display:none">';
+                for (var vj = vVisible; vj < vCount; vj++) vRestHtml += renderVideoPill(videos[vj]);
+                vRestHtml += '</span>';
+              }
+              var vMoreHtml = vCount > vVisible ? '<span class="video-pill video-more" onclick="event.stopPropagation();expandVideos(this)" title="展开全部">+' + (vCount - vVisible) + '</span>' : '';
+              var freezeClsV = col.freeze ? ' frozen-col' : '';
+              var stickyClsV = col.stickyRight ? ' sticky-right' : '';
+              var freezeStyleV = frozenOffsets[cols.indexOf(col)] || '';
+              rowHtml += '<td class="clickable-cell cell-pills'+(col.class?' '+col.class:'')+freezeClsV+stickyClsV+'"'+freezeStyleV+'>'+vHtml+vRestHtml+vMoreHtml+'</td>';
+              return;
+            }
+            if (col.render) val = col.render(val, row);
+          else if (col.format === 'thousands' && typeof val === 'number') val = val.toLocaleString('en-US');
+          else if (col.escape === false) { /* 显式豁免: raw HTML（如 <a> 链接列） */ }
+          else if (val === undefined || val === null) val = '';
+          else val = escapeHtml(String(val));  // HG-SEC-134: 默认转义，防止 stored XSS
+          var freezeCls = col.freeze ? ' frozen-col' : '';
+          var stickyCls = col.stickyRight ? ' sticky-right' : '';
+          var freezeStyle = frozenOffsets[cols.indexOf(col)] || '';
+          var qfKey = JSON.stringify(col.key).replace(/"/g, '&quot;');
+          var qfVal = JSON.stringify(String(row[col.key]||'')).replace(/"/g, '&quot;');
+          var tdOnclick = '';
+          if (col.onCellClick === 'split') {
+            tdOnclick = ' onclick="event.stopPropagation();openSplitAt('+rowIdx+','+qfKey+')"';  // CL009: 携带列 key
+          } else if (col.quickFilter === true) {
+            // quickFilter 默认关: col.quickFilter === true 才启用单元格点击筛选
+            tdOnclick = ' onclick="event.stopPropagation();quickFilterBy('+qfKey+','+qfVal+')"';
+          } else if (col === firstKeyCol) {
+            // 第 1 列默认分栏: 无其他 onclick handler 时打开 split
+            tdOnclick = ' onclick="event.stopPropagation();openSplitAt('+rowIdx+','+qfKey+')"';  // CL009: 携带列 key
+          }
+          rowHtml += '<td class="clickable-cell' + (col.class ? ' ' + col.class : '') + freezeCls + stickyCls + '"'+tdOnclick+freezeStyle+'>'+val+'</td>';
+        }
+      });
+      rowHtml += '</tr>';
+      // Expand detail row (accordion mode)
+      if (expandedIdx === rowIdx) {
+        var detailCols = COLUMNS.filter(function(c) { return c.key && c.type !== 'actions' && colVisibility[c.key] !== false; });
+        rowHtml += '<tr class="expand-row"><td colspan="' + (showRowSelect ? cols.length + 1 : cols.length) + '">';
+        rowHtml += '<div class="expand-grid">';
+        detailCols.forEach(function(c) {
+          var v = row[c.key]; if (v === null || v === undefined) v = '';
+          var valHtml;
+          if (Array.isArray(v) && c.type === 'videos') {
+            // videos 数组特判：逐条渲染 [图标] title (duration) + url 链接（勿 String(v) → [object Object]）
+            valHtml = renderVideoListHtml(v);
+          } else if (Array.isArray(v) && c.type === 'list') {
+            valHtml = renderRelatedListHtml(v, c);          // CL036 关联列：逐条列 url/主字段/次字段
+          } else {
+            valHtml = escapeHtml(cellText(v));               // CL036: 数组/对象值 → 展示文本
+          }
+          rowHtml += '<div class="expand-item"><div class="ex-label">' + escapeHtml(c.label) + '</div><div class="ex-value">' + valHtml + '</div></div>';
+        });
+        rowHtml += '</div></td></tr>';
+      }
+      return rowHtml;
+    }).join('');
+    renderPager(totalPages);
+  }
+
+  function renderActions(col, row) {
+    if (!col.actions) return '';
+    return col.actions.map(function(act) {
+      var onclick = '';
+      if (act.copyKey) {
+        onclick = 'event.stopPropagation();copyAction(' + JSON.stringify(row[act.copyKey] || '') + ')';
+      } else if (act.hrefKey) {
+        onclick = 'event.stopPropagation();window.open(' + JSON.stringify(row[act.hrefKey] || '').replace(/"/g, '&quot;') + ',"_blank","noopener,noreferrer")';
+      } else if (act.handler) {
+        onclick = 'event.stopPropagation();window.' + act.handler + '(event,' + JSON.stringify(row).replace(/\"/g, '&quot;') + ')';
+      } else if (act.desc) {
+        onclick = 'event.stopPropagation();showDemoAction(' + JSON.stringify((act.icon||'') + ' ' + act.label + ': ' + act.desc) + ')';
+      }
+      return '<button class="action-btn ' + (act.class||'') + '" onclick=\'' + onclick + '\' title="' + (act.label||'') + '">' + (act.icon || act.label) + '</button>';
+    }).join('');
+  }
+
+  /* ── Demo action: show description toast ── */
+  window.showDemoAction = function(msg) {
+    showToast(msg);
+  };
+
+  function escapeAttr(s) { return String(s).replace(/'/g,"\\'").replace(/"/g,'&quot;'); }
+
+  /* ── Videos column (col.type === 'videos') ── */
+  // 平台图标映射：归一化 String(platform).trim().toLowerCase() 后匹配别名（抖音→douyin、B站→bilibili、YouTube→youtube）
+  var VIDEO_PLATFORM_ICONS = {
+    'douyin': '🎵', '抖音': '🎵',
+    'bilibili': '📺', 'b站': '📺',
+    'youtube': '▶️'
+  };
+  function videoPlatformIcon(platform) {
+    var p = String(platform === undefined || platform === null ? '' : platform).trim().toLowerCase();
+    return VIDEO_PLATFORM_ICONS[p] || '📹';
+  }
+  // pill 文案：[图标] title (duration)；title 缺省 → [图标] platform (duration)；均缺省 → [📹] (duration)
+  function videoPillLabel(v) {
+    var icon = videoPlatformIcon(v.platform);
+    var dur = v.duration ? ' (' + v.duration + ')' : '';
+    if (v.title) return icon + ' ' + v.title + dur;
+    if (v.platform) return icon + ' ' + String(v.platform) + dur;
+    return icon + dur;
+  }
+  // 单元格视频 pill：点击新标签页打开 url（noopener,noreferrer；onclick 转义沿用 actions 先例 JSON.stringify + &quot;）
+  function renderVideoPill(v) {
+    if (!v || typeof v !== 'object') return '';
+    var url = v.url;
+    if (url === undefined || url === null) return '';
+    var label = videoPillLabel(v);
+    var urlAttr = JSON.stringify(String(url)).replace(/\"/g, '&quot;');
+    return '<span class="video-pill" title="' + escapeHtml(String(url)) + '" onclick="event.stopPropagation();window.open(' + urlAttr + ',\'_blank\',\'noopener,noreferrer\')">' + escapeHtml(label) + '</span>';
+  }
+  // 折叠 "+N"：点击展开全部（DOM 显示剩余 pill），不折叠回；跨 re-render 重置折叠态
+  window.expandVideos = function(el) {
+    var td = el.parentNode;
+    var rest = td.querySelector('.video-rest');
+    if (rest) rest.style.display = '';
+    el.style.display = 'none';
+  };
+  // split 预览 / expand 行内展开：markdown 链接风格 [图标 title (duration)] —— label 为链接文本（点击打开 url），url 仅 hover title 可见
+  function renderVideoListHtml(videos) {
+    if (!Array.isArray(videos) || !videos.length) return '';
+    return videos.map(function(v) {
+      if (!v || typeof v !== 'object') return '';
+      var url = v.url;
+      var label = videoPillLabel(v);
+      if (url) {
+        var urlAttr = JSON.stringify(String(url)).replace(/\"/g, '&quot;');
+        return '<div style="margin:2px 0;line-height:1.6">' +
+          '<a class="video-split-link" href="javascript:void(0)" title="' + escapeHtml(String(url)) + '" onclick="event.stopPropagation();window.open(' + urlAttr + ',\'_blank\',\'noopener,noreferrer\')">' + escapeHtml(label) + '</a></div>';
+      }
+      return '<div style="margin:2px 0;line-height:1.6">' + escapeHtml(label) + '</div>';
+    }).join('');
+  }
+
+  /* ── CL036 关联条目列表（分栏详情 / 行内展开 / modal 共用）：逐条 url + 主字段 + 次字段 ── */
+  function renderRelatedListHtml(items, col) {
+    if (!Array.isArray(items) || !items.length) return '<span style="color:var(--text-muted)">（无）</span>';
+    var mainKey = (col && col.listLabel) || '';
+    var subKey = (col && col.listSub) || '';
+    return items.map(function(it) {
+      if (!it || typeof it !== 'object') {
+        return '<div style="margin:3px 0;line-height:1.7">' + escapeHtml(pillText(it)) + '</div>';
+      }
+      var main = (mainKey && it[mainKey]) ? String(it[mainKey]) : pillText(it);
+      var sub = '';
+      var sv = subKey ? it[subKey] : undefined;
+      if (typeof sv === 'boolean') { if (sv) sub = '✅'; }
+      else if (sv !== undefined && sv !== null && sv !== '') { sub = String(sv); }
+      else if (it.platform) { sub = String(it.platform); }
+      var link = '';
+      if (it.url) {
+        link = '<a class="related-link" href="javascript:void(0)" title="' + escapeHtml(String(it.url)) + '"' +
+          ' onclick="event.stopPropagation();window.open(' + JSON.stringify(String(it.url)).replace(/"/g, '&quot;') +
+          ',\'_blank\',\'noopener,noreferrer\')">🔗</a> ';
+      }
+      return '<div style="margin:3px 0;line-height:1.7">' + link + escapeHtml(main) +
+        (sub ? ' <span style="color:var(--text-muted)">· ' + escapeHtml(sub) + '</span>' : '') + '</div>';
+    }).join('');
+  }
+
+  function getRowClickCol() {
+    return COLUMNS.find(function(c){return c.onClick;});
+  }
+
+  function isRowClickable(row) {
+    if (clickMode === 'tab') {
+      var col = getRowClickCol();
+      return col && col.onClick === 'url' && row.url;
+    }
+    // modal, split, or expand: any row is clickable
+    return clickMode === 'modal' || clickMode === 'split' || clickMode === 'expand';
+  }
+
+  /* ── Stats ── */
+  function updateStats() {
+    document.getElementById('statTotal').textContent = DATA.length;
+    var fp = document.getElementById('statFilteredPill');
+    if (filtered.length !== DATA.length || quickFilter) {
+      fp.style.display = 'inline-flex';
+      document.getElementById('statFiltered').textContent = filtered.length;
+    } else { fp.style.display = 'none'; }
+    var sp = document.getElementById('statSelectedPill');
+    if (showRowSelect) {
+      var cnt = Object.keys(selectedRows).length;
+      sp.style.display = cnt > 0 ? 'inline-flex' : 'none';
+      document.getElementById('statSelected').textContent = cnt;
+    }
+    // Quick filter pill
+    var qfEl = document.getElementById('quickFilterPill');
+    if (quickFilter) {
+      qfEl.style.display = 'inline-flex';
+      var col = COLUMNS.find(function(c){return c.key===quickFilter.key;});
+      qfEl.innerHTML = (col ? col.label : quickFilter.key) + ': ' + escapeHtml(quickFilter.value) + '<span class="fp-close" onclick="event.stopPropagation();clearQuickFilter()">✕</span>';
+      qfEl.onclick = function() { clearQuickFilter(); };
+    } else {
+      qfEl.style.display = 'none';
+    }
+  }
+
+  window.quickFilterBy = function(key, value, mode) {
+    if (splitActive) closeSplit();  // HG-SEC-075: quickFilter 设置/清除 → 关闭分栏 (split 下标仅对默认排序+无 quickFilter 有效)
+    mode = mode || 'exact';
+    if (quickFilter && quickFilter.key === key && quickFilter.value === value && (quickFilter.mode || 'exact') === mode) {
+      quickFilter = null;  // toggle off
+    } else {
+      quickFilter = {key: key, value: value, mode: mode};
+    }
+    expandedIdx = -1;
+    currentPage = 1;
+    render();
+  };
+
+  window.clearQuickFilter = function() {
+    if (splitActive) closeSplit();  // HG-SEC-075
+    quickFilter = null;
+    currentPage = 1;
+    render();
+  };
+
+  /* ── Pagination ── */
+  function renderPager(totalPages) {
+    var el = document.getElementById('pager');
+    if (totalPages <= 1) { el.innerHTML = ''; return; }
+    var h = '<button class="btn btn-ghost btn-sm" onclick="goPage(1)"'+(currentPage===1?' disabled':'')+'>‹‹</button>';
+    h += '<button class="btn btn-ghost btn-sm" onclick="goPage('+(currentPage-1)+')"'+(currentPage===1?' disabled':'')+'>‹</button>';
+    h += '<span class="text-xs text-gray" style="margin:0 8px;">'+currentPage+' / '+totalPages+'</span>';
+    h += '<button class="btn btn-ghost btn-sm" onclick="goPage('+(currentPage+1)+')"'+(currentPage===totalPages?' disabled':'')+'>›</button>';
+    h += '<button class="btn btn-ghost btn-sm" onclick="goPage('+totalPages+')\"'+(currentPage===totalPages?' disabled':'')+'>››</button>';
+    el.innerHTML = h;
+  }
+
+  window.goPage = function(n) {
+    var tp = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    currentPage = Math.max(1, Math.min(n, tp));
+    expandedIdx = -1;
+    render();
+  };
+
+  /* ── Sort ── */
+  function initThead() {
+    var thead = document.getElementById('thead');
+    var cols = visibleCols();
+    // Ensure every column has an explicit width (Cinema-disciplined model)
+    cols.forEach(function(c) {
+      if (!c.width) c.width = c.type === 'actions' ? '100px' : '120px';
+    });
+    var frozenOffset = 0;
+    var frozenStyles = [];
+    cols.forEach(function(c) {
+      var w = c.width ? parseInt(c.width) : 120;
+      if (c.freeze) { frozenStyles.push('left:' + frozenOffset + 'px'); frozenOffset += w; }
+      else { frozenStyles.push(''); }
+    });
+    thead.innerHTML = '<tr>' +
+      (showIndex ? '<th class="col-index-num" style="width:42px">序号</th>' : '') +
+      (showRowSelect ? '<th class="col-checkbox"><input type="checkbox" id="selectAll" onchange="toggleAll(event)"></th>' : '') +
+      cols.map(function(c, ci) {
+        var sortCls = '';
+        if (c.sortable !== false && c.type !== 'actions') { sortCls = ' sortable'; if (sortKey === c.key) sortCls += sortAsc ? ' sort-asc' : ' sort-desc'; if (sortKey2 === c.key) sortCls += ' sort-asc'; }
+        var freezeCls = c.freeze ? ' frozen-col' : '';
+        var stickyCls = c.stickyRight ? ' sticky-right' : '';
+        var freezeStyle = frozenStyles[ci] ? ' style="' + frozenStyles[ci] + '"' : '';
+        return '<th class="' + sortCls + freezeCls + stickyCls + '"' + (c.sortable !== false ? ' onclick="sortBy(\'' + c.key + '\',event)"' : '') +
+          ' style="width:' + c.width + '"' + freezeStyle + '>' + c.label + (columnResize ? '<span class="resize-handle" onmousedown="startResize(event,\'' + c.key + '\')"></span>' : '') + '</th>';
+      }).join('') + '</tr>';
+  }
+
+  var sortKey2 = '', sortAsc2 = true;
+  window.sortBy = function(key, event) {
+    if (splitActive) closeSplit();  // HG-SEC-075: sort 变化 → 关闭分栏 (split 下标仅对默认排序有效)
+    if (event && event.shiftKey) { if (sortKey2 === key) sortAsc2 = !sortAsc2; else { sortKey2 = key; sortAsc2 = true; } }
+    else { if (sortKey === key) sortAsc = !sortAsc; else { sortKey = key; sortAsc = true; sortKey2 = ''; } }
+    expandedIdx = -1; initThead(); render();
+  };
+
+  /* ── Row selection ── */
+  window.toggleRow = function(idx) {
+    if (selectedRows[idx]) delete selectedRows[idx]; else selectedRows[idx] = true;
+    updateStats();
+    render();
+  };
+  window.toggleAll = function(e) {
+    var checked = e.target.checked;
+    var start = (currentPage - 1) * PAGE_SIZE;
+    for (var i = start; i < start + PAGE_SIZE && i < filtered.length; i++) {
+      if (checked) selectedRows[i] = true; else delete selectedRows[i];
+    }
+    updateStats();
+    render();
+  };
+
+  /* ── Row click ── */
+  function handleRowClick(idx) {
+    var row = filtered[idx];
+    // tab mode: open in new tab (default)
+    if (clickMode === 'tab') {
+      var col = getRowClickCol();
+      if (!col || col.onClick !== 'url' || !row.url) return;
+      window.open(row.url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    // modal mode: show popup
+    if (clickMode === 'modal') {
+      showModal(row);
+      return;
+    }
+    // split mode: show preview panel
+    if (clickMode === 'split') {
+      activateSplit(row, idx);
+      return;
+    }
+    // expand mode: toggle inline detail
+    if (clickMode === 'expand') {
+      if (expandedIdx === idx) {
+        expandedIdx = -1;  // collapse
+      } else {
+        expandedIdx = idx;  // expand
+      }
+      render();
+      return;
+    }
+  }
+  window.handleRowClick = handleRowClick;
+
+  /* ── Modal Panel ── */
+  function showModal(row) {
+    var cols = visibleCols({requireKey: true, excludeActions: true});
+    var title = row[cols[0] && cols[0].key] || '详情';
+    var html = '<div style="position:relative"><button class="modal-close" onclick="closeModal()" style="position:sticky;top:0;float:right;">✕</button><h3>'+escapeHtml(String(title))+'</h3>';
+    html += cols.map(function(c) {
+      var v = row[c.key]; if (v === null || v === undefined) v = '';
+      return '<div class="modal-field"><span class="mf-label">'+escapeHtml(c.label)+'</span><span class="mf-value">'+escapeHtml(cellText(v))+'</span></div>';
+    }).join('');
+    html += '</div>';
+    document.getElementById('modalPanel').innerHTML = html;
+    document.getElementById('modalOverlay').classList.add('active');
+  }
+  window.showModal = showModal;
+  window.closeModal = function() { document.getElementById('modalOverlay').classList.remove('active'); };
+
+  // Generic action handlers for modal/split via action buttons
+  window.skillModal = function(event, row) { showModal(row); };
+  window.skillSplit = function(event, row) {
+    // Find row index in filtered data for highlight
+    for (var i = 0; i < filtered.length; i++) {
+      if (filtered[i].name === row.name) { activateSplit(row, i); return; }
+    }
+    activateSplit(row, 0);
+  };
+
+  /* ── Skills-specific modal & split renderers ── */
+  if (OPTIONS && OPTIONS.modalRenderer === 'skills') {
+    window.skillModal = function(event, row) {
+      var h = '<div style="position:relative">';
+      h += '<button class="modal-close" onclick="closeModal()" style="position:sticky;top:0;float:right;background:none;border:none;color:#6b7280;font-size:1.2rem;cursor:pointer;z-index:1">✕</button>';
+      h += '<h3 style="margin:0 0 14px;font-size:0.95rem;color:#f0f0f0">📋 Skill 详细信息</h3>';
+
+      // Fields
+      var fields = [
+        {label:'名称', value: row.name},
+        {label:'分类', value: row.category},
+        {label:'作者', value: row.author || '-'},
+        {label:'描述', value: row.description || '-'},
+      ];
+      fields.forEach(function(f) {
+        h += '<div style="padding:5px 0;border-bottom:1px solid #1a1a2e;font-size:0.78rem;display:flex;gap:10px">';
+        h += '<span style="color:#6b7280;min-width:60px;flex-shrink:0">'+escapeHtml(f.label)+'</span>';
+        h += '<span style="color:#e0e0e0;word-break:break-all">'+escapeHtml(String(f.value))+'</span>';
+        h += '</div>';
+      });
+
+      // Tags — computed from name words
+      var tags = (row.name||'').split(/[-_]/).filter(function(s){return s.length>1;});
+      h += '<div style="padding:5px 0;border-bottom:1px solid #1a1a2e;font-size:0.78rem;display:flex;gap:10px">';
+      h += '<span style="color:#6b7280;min-width:60px;flex-shrink:0">标签</span>';
+      h += '<span>';
+      tags.forEach(function(t) {
+        h += '<span style="display:inline-block;padding:1px 6px;border-radius:9999px;font-size:0.62rem;background:rgba(79,70,229,0.12);color:var(--cobalt-400);border:1px solid rgba(79,70,229,0.2);margin:1px">'+escapeHtml(t)+'</span>';
+      });
+      h += '</span></div>';
+
+      // Version — tag style
+      h += '<div style="padding:5px 0;border-bottom:1px solid #1a1a2e;font-size:0.78rem;display:flex;gap:10px">';
+      h += '<span style="color:#6b7280;min-width:60px;flex-shrink:0">版本</span>';
+      h += '<span style="display:inline-block;padding:1px 8px;border-radius:9999px;font-size:0.65rem;background:rgba(251,191,36,0.15);color:#fbbf24;border:1px solid rgba(251,191,36,0.3)">'+escapeHtml(row.version||'-')+'</span>';
+      h += '</div>';
+
+      // Path with copy button
+      h += '<div style="padding:5px 0;border-bottom:1px solid #1a1a2e;font-size:0.78rem;display:flex;gap:10px">';
+      h += '<span style="color:#6b7280;min-width:60px;flex-shrink:0">路径</span>';
+      h += '<span style="color:#e0e0e0;font-size:0.7rem;word-break:break-all;flex:1">'+escapeHtml(row.skill_path||'')+'</span>';
+      h += '<span onclick="event.stopPropagation();copyAction(\''+(row.skill_path||'').replace(/'/g,"\\'")+'\')" style="cursor:pointer;font-size:0.8rem;flex-shrink:0" title="拷贝路径">📋</span>';
+      h += '</div>';
+
+      // Profiles — tag style
+      var profiles = (row.profiles||'').split(/,\\s*/).filter(Boolean);
+      h += '<div style="padding:5px 0;border-bottom:1px solid #1a1a2e;font-size:0.78rem;display:flex;gap:10px">';
+      h += '<span style="color:#6b7280;min-width:60px;flex-shrink:0">所属 Profile</span>';
+      h += '<span>';
+      profiles.forEach(function(p) {
+        h += '<span style="display:inline-block;padding:1px 6px;border-radius:9999px;font-size:0.62rem;background:rgba(79,70,229,0.12);color:var(--cobalt-400);border:1px solid rgba(79,70,229,0.2);margin:1px">'+escapeHtml(p)+'</span>';
+      });
+      h += '</span></div>';
+
+      // Chinese content & scripts
+      var hasChinese = /[\u4e00-\u9fff]/.test(row.description||'') ? '✅ 是' : '❌ 否';
+      var hasScript = (row.file_count||0) > 1 ? '✅ 是' : '❌ 否';
+      h += '<div style="padding:5px 0;border-bottom:1px solid #1a1a2e;font-size:0.78rem;display:flex;gap:10px">';
+      h += '<span style="color:#6b7280;min-width:60px;flex-shrink:0">中文内容</span>';
+      h += '<span style="color:#e0e0e0">'+hasChinese+'</span>';
+      h += '</div>';
+      h += '<div style="padding:5px 0;border-bottom:1px solid #1a1a2e;font-size:0.78rem;display:flex;gap:10px">';
+      h += '<span style="color:#6b7280;min-width:60px;flex-shrink:0">有脚本</span>';
+      h += '<span style="color:#e0e0e0">'+hasScript+'</span>';
+      h += '</div>';
+
+      // File count
+      h += '<div style="padding:5px 0;border-bottom:1px solid #1a1a2e;font-size:0.78rem;display:flex;gap:10px">';
+      h += '<span style="color:#6b7280;min-width:60px;flex-shrink:0">文件数</span>';
+      h += '<span style="color:#e0e0e0">'+escapeHtml(String(row.file_count||0))+'</span>';
+      h += '</div>';
+
+      h += '</div>';
+      document.getElementById('modalPanel').innerHTML = h;
+      document.getElementById('modalOverlay').classList.add('active');
+    };
+
+    window.skillSplit = function(event, row) {
+      for (var i = 0; i < filtered.length; i++) {
+        if (filtered[i].name === row.name) { showSkillSplit(row, i); return; }
+      }
+      showSkillSplit(row, 0);
+    };
+
+    function showSkillSplit(row, idx) {
+      splitRow = row; splitIdx = idx;
+      splitActive = true;
+      var wrapper = document.querySelector('.wrapper');
+      wrapper.classList.add('split-mode');
+      initThead();
+      render();
+      // Render SKILL.md content
+      var header = document.getElementById('splitPreviewHeader');
+      header.innerHTML = '<button class="sp-nav" onclick="splitNav(-1)" title="上一个">▲</button>' +
+        '<button class="sp-nav" onclick="splitNav(1)" title="下一个">▼</button>' +
+        ' ' + escapeHtml(row.name||'详情') +
+        '<button class="sp-close" onclick="closeSplit()">✕</button>';
+      var body = document.getElementById('splitPreviewBody');
+      body.innerHTML = '<div style="text-align:center;padding:40px;color:#6b7280">⏳ 加载中...</div>';
+      // Try to fetch SKILL.md
+      var mdUrl = '/skills/' + encodeURIComponent(row.category) + '/' + encodeURIComponent(row.name) + '/SKILL.md';
+      fetch(mdUrl).then(function(resp) {
+        if (resp.ok) return resp.text();
+        throw new Error('HTTP ' + resp.status);
+      }).then(function(text) {
+        // Simple markdown → HTML
+        var html = text
+          .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+          .replace(/^### (.+)$/gm,'<h3 style="margin:1em 0 0.4em;font-size:0.85rem;color:#e0e0e0">$1</h3>')
+          .replace(/^## (.+)$/gm,'<h2 style="margin:1.2em 0 0.5em;font-size:0.95rem;color:#f0f0f0">$1</h2>')
+          .replace(/^# (.+)$/gm,'<h1 style="margin:1.4em 0 0.6em;font-size:1.1rem;color:#f0f0f0">$1</h1>')
+          .replace(/`([^`]+)`/g,'<code style="background:#1a1a2e;padding:1px 4px;border-radius:3px;font-size:0.7rem">$1</code>')
+          .replace(/\*\*(.+?)\*\*/g,'<b>$1</b>')
+          .replace(/\*(.+?)\*/g,'<i>$1</i>')
+          .replace(/^\- (.+)$/gm,'<li style="margin-left:16px">$1</li>')
+          .replace(/\n/g,'<br>');
+        body.innerHTML = '<div style="font-size:0.75rem;line-height:1.7;color:#b0b0c0;padding:8px 0">'+html+'</div>';
+      }).catch(function(err) {
+        body.innerHTML = '<div style="text-align:center;padding:40px;color:#6b7280;font-size:0.75rem">⚠ 无法加载 SKILL.md<br><span style="font-size:0.62rem">'+escapeHtml(mdUrl)+'</span><br><span style="font-size:0.62rem">'+escapeHtml(err.message)+'</span></div>';
+      });
+      // Highlight
+      var tbody = document.getElementById('tbody');
+      var rows = tbody.querySelectorAll('tr');
+      rows.forEach(function(r){ r.classList.remove('split-active'); });
+      if (rows[idx]) rows[idx].classList.add('split-active');
+    }
+  }
+
+  // Esc closes modal
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && document.getElementById('modalOverlay').classList.contains('active')) {
+      closeModal();
+    }
+  });
+
+  /* ── Split View ── */
+  var splitRow = null, splitIdx = -1, splitField = '';  // CL009: splitField = 触发分栏的列 key（'' = 未知）
+
+  /* ── URL 状态同步 (CL004: ?tab&q&split replaceState; HG-SEC-074 统一 URLSearchParams) ── */
+  function syncUrlState() {
+    var p = new URLSearchParams();
+    if (TABS && TABS.length && activeTab && activeTab !== TABS[0].key) p.set('tab', activeTab);
+    var q = document.getElementById('searchInput').value;
+    if (q) p.set('q', q);
+    if (splitActive && splitIdx >= 0) p.set('split', String(splitIdx));
+    // CL036 标签筛选进 URL（可分享/可刷新保持）：组用 tagGroup，多标签用重复 tag 参数
+    if (tagFilter.group) p.set('tagGroup', tagFilter.group);
+    tagFilter.tags.forEach(function(id) { p.append('tag', id); });
+    // 页面级扩展：range（本地过滤，range tabs 在 runtime 之外）也纳入 URL 状态
+    //   —— 本页与 git-cloner 页的唯一差异点：变量名/默认值（本页默认 all）
+    if (window.w2mRange && window.w2mRange !== RANGE_DEFAULT) p.set('range', window.w2mRange);
+    var qs = p.toString();
+    var url = location.pathname + (qs ? '?' + qs : '');
+    try { history.replaceState(null, '', url); } catch(e) {}
+  }
+  window.syncUrlState = syncUrlState;
+
+  function activateSplit(row, idx, colKey) {
+    splitRow = row; splitIdx = idx; splitField = colKey || '';  // CL009
+    splitActive = true;
+    window.splitActive = true; window.splitIdx = idx; window.splitRow = row;  // 暴露供调试/测试
+    var wrapper = document.querySelector('.wrapper');
+    wrapper.classList.add('split-mode');
+    initThead();
+    render();  // re-render with preview-only cols
+    renderSplitPreview(row);
+    // highlight active row
+    var tbody = document.getElementById('tbody');
+    var rows = tbody.querySelectorAll('tr');
+    rows.forEach(function(r){ r.classList.remove('split-active'); });
+    if (rows[idx]) rows[idx].classList.add('split-active');
+    syncUrlState();
+  }
+  window.activateSplit = activateSplit;
+  window.openSplitAt = function(idx, colKey) { if (idx >= 0 && idx < filtered.length) activateSplit(filtered[idx], idx, colKey); };
+  window.splitNav = function(dir) {
+    var newIdx = splitIdx + dir;
+    if (newIdx < 0 || newIdx >= filtered.length) return;
+    activateSplit(filtered[newIdx], newIdx, '');
+  };
+  window.closeSplit = function() {
+    splitActive = false;
+    window.splitActive = false; window.splitIdx = -1; window.splitRow = null;  // 暴露供调试/测试
+    var wrapper = document.querySelector('.wrapper');
+    wrapper.classList.remove('split-mode');
+    splitRow = null; splitIdx = -1; splitField = '';
+    initThead();
+    render();
+    // clear highlight
+    var rows = document.getElementById('tbody').querySelectorAll('tr');
+    rows.forEach(function(r){ r.classList.remove('split-active'); });
+    syncUrlState();
+  };
+
+  /* ── CL009: GitHub Issue 反馈链接（Issue Form 预填，全部 encodeURIComponent） ── */
+  function buildFeedbackUrl(row) {
+    if (!FB_REPO || !row) return '';
+    var keyField = (FB_CFG && FB_CFG.key) || 'name';
+    var altField = (FB_CFG && FB_CFG.altKey) || '';
+    var rowId = (row[keyField] === null || row[keyField] === undefined) ? '' : String(row[keyField]);
+    if (!rowId) return '';
+    var parts = [];
+    function add(k, v) {
+      if (v === null || v === undefined) return;
+      v = String(v);
+      if (!v) return;
+      parts.push(encodeURIComponent(k) + '=' + encodeURIComponent(v));
+    }
+    // v1.3 (CL009): 模板名来自 options.feedback.template（案例自描述）
+    add('template', (FB_CFG && FB_CFG.template) || 'data-fix.yml');
+    var bits = [];
+    if (FB_CFG && FB_CFG.dataset) bits.push(String(FB_CFG.dataset));
+    bits.push(rowId);
+    add('title', '[数据反馈] ' + bits.join(' · '));
+    add('page', (location.pathname || '').replace(/^\/+/, ''));
+    add('dataset', FB_CFG && FB_CFG.dataset);
+    add('row', rowId);
+    add('row_en', altField ? row[altField] : '');
+    // v1.3 (D1): 不再预填 field / current —— 字段由表单下拉选择（dropdown 不可 URL 预填）
+    return 'https://github.com/' + FB_REPO + '/issues/new?' + parts.join('&');
+  }
+  window.buildFeedbackUrl = buildFeedbackUrl;
+  window.openFeedbackIssue = function() {
+    var url = buildFeedbackUrl(splitRow);
+    if (url) window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  function renderSplitPreview(row) {
+    var header = document.getElementById('splitPreviewHeader');
+    var body = document.getElementById('splitPreviewBody');
+    // title from first column
+    var titleCol = visibleCols({requireKey: true})[0];
+    // CL009: 反馈按钮仅当 options.feedback.repo 配置时渲染
+    var fbBtn = FB_REPO
+      ? '<button class="sp-feedback" id="spFeedbackBtn" onclick="openFeedbackIssue()" title="反馈数据">✏️</button>'
+      : '';
+    header.innerHTML = '<button class="sp-nav" onclick="splitNav(-1)" title="上一个">▲</button>' +
+      '<button class="sp-nav" onclick="splitNav(1)" title="下一个">▼</button>' +
+      ' ' + (titleCol ? escapeHtml(String(row[titleCol.key]||'')) : '详情') +
+      fbBtn +
+      '<button class="sp-close" onclick="closeSplit()">✕</button>';
+
+    // render: url → iframe, desc → textContent, else kv-list
+    if (row.url) {
+      body.innerHTML = '<iframe src="'+escapeHtml(String(row.url))+'" sandbox="allow-same-origin"></iframe>';
+    } else if (row.desc) {
+      var d = document.createElement('div');
+      d.textContent = row.desc;
+      body.innerHTML = '';
+      body.appendChild(d);
+    } else {
+      // 分栏详情展示所有字段：全列渲染（排除 actions/hide），忽略列可见性与 preview 过滤；splitFull 字段整行宽 + 换行
+      var cols = COLUMNS.filter(function(c){ return c.key && c.type !== 'actions' && !c.hide; });
+      body.innerHTML = '<div class="kv-list">'+cols.map(function(c) {
+        var v = row[c.key]; if (v === null || v === undefined) v = '';
+        var cls = c.splitFull ? ' kv-item kv-item-full' : ' kv-item';
+        var valHtml;
+        if (Array.isArray(v) && c.type === 'videos') {
+          // videos 数组特判：逐条渲染 + url 链接（勿 String(v) → [object Object]）
+          valHtml = renderVideoListHtml(v);
+        } else if (Array.isArray(v) && c.type === 'list') {
+          // CL036 关联列（articles/projects）：逐条 url/主字段/次字段（分栏详情不内联正文）
+          valHtml = renderRelatedListHtml(v, c);
+        } else if (c.type === 'tags') {
+          // CL036 标签列：分栏详情渲染为 pill 展示文本（对象数组 → 显示名）
+          valHtml = escapeHtml(cellText(v));
+        } else {
+          var _t = cellText(v);
+          valHtml = c.splitFull ? escapeHtml(_t).replace(/\n/g,'<br>') : escapeHtml(_t);
+        }
+        return '<div class="'+cls+'"><div class="kv-label">'+escapeHtml(c.label)+'</div><div class="kv-value">'+valHtml+'</div></div>';
+      }).join('')+'</div>';
+    }
+  }
+
+  /* ── Split drag ── */
+  function initSplitDrag() {
+    var drag = document.getElementById('splitDrag');
+    var wrapper = document.querySelector('.wrapper');
+    var isDragging = false;
+
+    drag.addEventListener('mousedown', function(e) {
+      e.preventDefault();
+      isDragging = true;
+      drag.classList.add('active');
+      document.addEventListener('mousemove', onDrag);
+      document.addEventListener('mouseup', onDragEnd);
+    });
+
+    function onDrag(e) {
+      if (!isDragging) return;
+      var rect = wrapper.getBoundingClientRect();
+      var ratio = ((e.clientX - rect.left) / rect.width) * 100;
+      ratio = Math.max(25, Math.min(75, ratio));
+      splitRatio = ratio;
+      wrapper.style.setProperty('--spl-ratio', ratio+'%');
+      try { localStorage.setItem('web2md:table:split-ratio', ratio); } catch(e) {}
+    }
+
+    function onDragEnd() {
+      isDragging = false;
+      drag.classList.remove('active');
+      document.removeEventListener('mousemove', onDrag);
+      document.removeEventListener('mouseup', onDragEnd);
+    }
+  }
+
+  /* ── Ratio Presets ── */
+  var RATIOS = [
+    {key:'100',label:'仅表格',   tc:'1',rp:'0'},
+    {key:'37',label:'3:7 紧凑',  tc:'3',rp:'7'},
+    {key:'46',label:'4:6 标准',  tc:'4',rp:'6'},
+    {key:'55',label:'5:5 平分',  tc:'5',rp:'5'},
+    {key:'64',label:'6:4 宽屏',  tc:'6',rp:'4'},
+  ];
+  var _currentRatioKey = '46';
+
+  function applyRatioPreset(key) {
+    _currentRatioKey = key;
+    try { localStorage.setItem('web2md:table:ratio-preset', key); } catch(e) {}
+    var r = RATIOS.find(function(x){return x.key===key;});
+    if (!r) return;
+    if (key === '100') {
+      closeSplit();
+    } else {
+      splitRatio = parseInt(r.tc) / (parseInt(r.tc) + parseInt(r.rp)) * 100;
+      document.querySelector('.wrapper').style.setProperty('--spl-ratio', splitRatio+'%');
+      try { localStorage.setItem('web2md:table:split-ratio', splitRatio); } catch(e) {}
+    }
+    renderRatioDropdown();
+  }
+
+  function renderRatioDropdown() {
+    var el = document.getElementById('ratioDropdown');
+    if (!el) return;
+    var cur = _currentRatioKey;
+    el.innerHTML = RATIOS.map(function(r) {
+      return '<div class="ratio-opt'+(r.key===cur?' active':'')+'" onclick="event.stopPropagation();applyRatioPreset(\''+r.key+'\')">'+r.label+(r.key===cur?' ✔':'')+'</div>';
+    }).join('');
+  }
+
+  window.toggleRatioDropdown = function() {
+    var el = document.getElementById('ratioDropdown');
+    if (!el) return;
+    renderRatioDropdown();
+    el.classList.toggle('show');
+    document.getElementById('colToggleDropdown').classList.remove('show');
+  };
+
+  try { _currentRatioKey = localStorage.getItem('web2md:table:ratio-preset') || '46'; } catch(e) {}
+  window.applyRatioPreset = applyRatioPreset;
+
+  /* ── Density ── */
+  function applyDensity() {
+    var table = document.querySelector('.data-table');
+    table.classList.remove('dense', 'comfortable');
+    if (density === 'compact') table.classList.add('dense');
+    else if (density === 'comfortable') table.classList.add('comfortable');
+  }
+
+  /* ── Actions ── */
+  window.copyAction = function(text) {
+    // CL043: 原为「存在性判断 + 无 catch / 无返回值检查」（WARN 档同类静默失效）⇒ 收敛到统一 copyText
+    copyText(text, '已复制: ' + text);
+  };
+
+  /* ── 复制入口（CL036 §15.5 actions） ──
+     本页复制实现全在页面脚本的 CL024 块构建器区段（web2mdBuildAiBlock / web2mdBuildHandle /
+     web2mdBuildInfoCmd + web2mdCopy 摘要 toast）；runtime 侧不持有取数通道
+     （对比 git-cloner 页：其 🤖/⌨️ 走 /api 服务通道 —— 本页无服务依赖，纯静态数据面） ── */
+
+
+  /* ── Share link (CL004: 🔗 拷贝规范化分享 URL; CL043 回退统一到页内 copyText) ── */
+  function buildShareUrl() {
+    syncUrlState();  // 确保 URL 与当前状态一致 (默认/空参数已剔除)
+    return location.href;
+  }
+  window.buildShareUrl = buildShareUrl;
+  window.shareLink = function() {
+    // CL043: 收敛到统一 copyText（能力判断前置 + execCommand 回退；原为存在性判断 + catch 回退，非安全上下文下仍静默）
+    copyText(buildShareUrl(), '已复制链接');
+  };
+
+  /* ── Column visibility ── */
+  var MAX_PRESETS = 10, MAX_PRESET_SIZE = 2048;
+  function listPresets() {
+    var presets = [];
+    try { presets = JSON.parse(localStorage.getItem('web2md:table:presets')) || []; } catch(e) {}
+    return presets;
+  }
+
+  function initColToggle() {
+    var dd = document.getElementById('colToggleDropdown');
+    var html = '';
+
+    // density section — visible when split/modal available
+    var clickModes = (OPTIONS && OPTIONS.clickModes) ||
+                     (OPTIONS && OPTIONS.clickMode ? [OPTIONS.clickMode] : null) ||
+                     ['tab'];
+    var validModes = clickModes;
+    // Also set default clickMode from singular if no plural
+    if (OPTIONS && OPTIONS.clickMode && !OPTIONS.clickModes) {
+      clickMode = OPTIONS.clickMode;
+      try { localStorage.setItem('web2md:table:click-mode', OPTIONS.clickMode); } catch(e) {}
+    }
+    var hasSplit = validModes.indexOf('split') !== -1;
+    var hasModal = validModes.indexOf('modal') !== -1;
+    var hasExpand = validModes.indexOf('expand') !== -1;
+    var tabCount = (hasSplit ? 1 : 0) + (hasModal ? 1 : 0) + (hasExpand ? 1 : 0) + 1;
+    if (tabCount > 1 || density !== 'default') {
+      html += '<div class="settings-section">密度</div>';
+      html += '<div style="display:flex;gap:4px;padding:4px 8px">';
+      ['default:标准', 'compact:紧凑', 'comfortable:舒适'].forEach(function(item) {
+        var parts = item.split(':');
+        var active = density===parts[0];
+        html += '<label class="settings-radio" style="flex:1;text-align:center;padding:3px 6px;border-radius:4px;cursor:pointer;font-size:0.68rem;'+(active?'background:rgba(79,70,229,0.2);color:var(--cobalt-400);border:1px solid rgba(79,70,229,0.3)':'color:#9ca3af')+'"><input type="radio" name="density" value="'+parts[0]+'" '+(active?'checked':'')+' onchange="setDensity(\''+parts[0]+'\')" style="display:none">'+parts[1]+'</label>';
+      });
+      html += '</div>';
+    }
+
+    // click mode section
+    if (tabCount > 1) {
+      html += '<div class="col-toggle-divider"></div><div class="settings-section">点击模式</div>';
+      if (validModes.indexOf('tab') !== -1) html += '<label class="settings-radio"><input type="radio" name="clickMode" value="tab" '+(clickMode==='tab'?'checked':'')+' onchange="setClickMode(\'tab\')">🔗 新标签页</label>';
+      if (validModes.indexOf('modal') !== -1) html += '<label class="settings-radio"><input type="radio" name="clickMode" value="modal" '+(clickMode==='modal'?'checked':'')+' onchange="setClickMode(\'modal\')">📋 弹出面板</label>';
+      if (validModes.indexOf('split') !== -1) html += '<label class="settings-radio"><input type="radio" name="clickMode" value="split" '+(clickMode==='split'?'checked':'')+' onchange="setClickMode(\'split\')">📑 分栏预览</label>';
+      if (validModes.indexOf('expand') !== -1) html += '<label class="settings-radio"><input type="radio" name="clickMode" value="expand" '+(clickMode==='expand'?'checked':'')+' onchange="setClickMode(\'expand\')">📂 行内展开</label>';
+    }
+
+    // column visibility
+    html += '<div class="col-toggle-divider"></div>';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:2px 12px"><span class="settings-section" style="padding:0">列可见性</span><span onclick="document.getElementById(\'colToggleDropdown\').classList.remove(\'show\')" style="cursor:pointer;font-size:0.8rem;color:#6b7280" title="关闭">✕</span></div>';
+    html += COLUMNS.filter(function(c){return c.key && c.type !== 'actions';}).map(function(c) {
+      var visible = colVisibility[c.key] !== false;
+      return '<label><input type="checkbox" '+(visible?'checked':'')+' onchange="toggleCol(\''+c.key+'\',this.checked)">'+c.label+'</label>';
+    }).join('');
+
+    // view presets
+    var presets = listPresets();
+    if (presets.length > 0) {
+      html += '<div class="col-toggle-divider"></div><div class="settings-section">视图预设 (' + presets.length + '/' + MAX_PRESETS + ')</div>';
+      presets.forEach(function(p) {
+        html += '<label style="display:flex;justify-content:space-between;align-items:center"><span onclick="loadPreset(\'' + p.name + '\')" style="cursor:pointer;flex:1">' + escapeHtml(p.name) + '</span><span onclick="event.stopPropagation();deletePreset(\'' + p.name + '\')" style="cursor:pointer;color:#f87171;font-size:0.65rem">✕</span></label>';
+      });
+    }
+    html += '<label style="font-size:0.65rem"><a href="#" onclick="event.preventDefault();var n=prompt(\'预设名称:\');if(n)savePreset(n)" style="color:var(--cobalt-400)">+ 保存当前视图</a></label>';
+
+    dd.innerHTML = html;
+    dd.onclick = function(e) { e.stopPropagation(); };
+    document.getElementById('colToggleBtn').onclick = function(e) {
+      e.stopPropagation();
+      dd.classList.toggle('show');
+    };
+    document.addEventListener('click', function() { dd.classList.remove('show'); });
+  }
+  window.initColToggle = initColToggle;
+
+  window.toggleCol = function(key, visible) {
+    colVisibility[key] = visible;
+    expandedIdx = -1;
+    try { localStorage.setItem('web2md:table:col-visibility', JSON.stringify(colVisibility)); } catch(e) {}
+    // Preserve dropdown open state across rebuild
+    var dd = document.getElementById('colToggleDropdown');
+    var wasOpen = dd.classList.contains('show');
+    initColToggle();
+    if (wasOpen) document.getElementById('colToggleDropdown').classList.add('show');
+    initThead();
+    render();
+  };
+
+  window.setDensity = function(val) {
+    density = val;
+    try { localStorage.setItem('web2md:table:density', val); } catch(e) {}
+    applyDensity();
+    initColToggle();
+  };
+
+  window.setClickMode = function(val) {
+    clickMode = val;
+    expandedIdx = -1;
+    try { localStorage.setItem('web2md:table:click-mode', val); } catch(e) {}
+    var dd = document.getElementById('colToggleDropdown');
+    var wasOpen = dd.classList.contains('show');
+    initColToggle();
+    if (wasOpen) document.getElementById('colToggleDropdown').classList.add('show');
+    render();
+  };
+
+  /* ── Search (real-time debounced) ── */
+  var searchTimer;
+  document.getElementById('searchInput').addEventListener('input', function() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function() { expandedIdx = -1; currentPage = 1; render(); syncUrlState(); }, 300);  // H1: q 随 debounce 同步
+  });
+  window.doSearch = function() { expandedIdx = -1; currentPage = 1; render(); syncUrlState(); };
+
+  /* ── Tab switch ── */
+  window.switchTab = function(key) {
+    activeTab = key;
+    try { localStorage.setItem('web2md:table:tab', key); } catch(e) {}
+    expandedIdx = -1;
+    buildTabs();
+    currentPage = 1;
+    render();
+    syncUrlState();
+  };
+
+  /* ── CSV Export ── */
+  function initExport() {
+    var btn = document.getElementById('exportBtn');
+    if (!showExport) return;
+    btn.style.display = 'inline-flex';
+    btn.onclick = function() {
+      var cols = visibleCols({excludeActions: true});
+      var header = cols.map(function(c){return '"'+c.label+'"';}).join(',');
+      var rows = filtered.map(function(row) {
+        return cols.map(function(c) {
+          return '"'+cellText(row[c.key]).replace(/"/g,'""')+'"';
+        }).join(',');
+      });
+      var csv = '\uFEFF' + header + '\n' + rows.join('\n');
+      var blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = 'export.csv'; a.click();
+      URL.revokeObjectURL(url);
+      showToast('已导出 '+filtered.length+' 条');
+    };
+  }
+
+  /* ── Toast ── */
+  var _toastTimer;
+  function showToast(msg) {
+    var el = document.getElementById('toast');
+    el.textContent = msg; el.classList.add('show');
+    clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(function(){el.classList.remove('show');}, 2500);
+  }
+  window.showToast = showToast;
+
+  /* ── Column resize ── */
+  var COL_WIDTHS_KEY = 'web2md:table:col-widths';
+  var _resizeCol, _resizeStartX, _resizeStartW, _resizeTh;
+  window.startResize = function(e, key) {
+    e.stopPropagation(); e.preventDefault();
+    _resizeCol = key;
+    _resizeStartX = e.clientX;
+    _resizeTh = e.target.parentElement;
+    _resizeStartW = _resizeTh.offsetWidth;
+    document.addEventListener('mousemove', onResizeMove);
+    document.addEventListener('mouseup', onResizeUp);
+  };
+  function onResizeMove(e) {
+    if (!_resizeCol) return;
+    var delta = e.clientX - _resizeStartX;
+    var newW = Math.max(40, _resizeStartW + delta);
+    // Direct DOM update (no full thead rebuild — avoids flicker)
+    if (_resizeTh) _resizeTh.style.width = newW + 'px';
+  }
+  function onResizeUp() {
+    if (_resizeCol && _resizeTh) {
+      var newW = _resizeTh.offsetWidth;
+      var col = COLUMNS.find(function(c){return c.key===_resizeCol;});
+      if (col) col.width = newW + 'px';
+      // Persist to localStorage
+      try {
+        var saved = {};
+        COLUMNS.forEach(function(c) { if (c.width) saved[c.key] = c.width; });
+        localStorage.setItem(COL_WIDTHS_KEY, JSON.stringify(saved));
+      } catch(e) {}
+    }
+    _resizeCol = null;
+    _resizeTh = null;
+    document.removeEventListener('mousemove', onResizeMove);
+    document.removeEventListener('mouseup', onResizeUp);
+  }
+
+  /* ── Debug: Print column widths ── */
+  window.printColWidths = function() {
+    var ths = document.querySelectorAll('.data-table th');
+    var widths = [];
+    for (var i = 0; i < ths.length; i++) {
+      var th = ths[i];
+      var cs = window.getComputedStyle(th);
+      widths.push({ label: th.textContent.trim() || '(checkbox)', width: cs.width });
+    }
+    console.table(widths);
+    return widths;
+  };
+
+  /* ── Init ── */
+  function init() {
+    // CL004: URL 状态恢复 — 顺序 tab(buildTabs 前) → q(render 前) → split(render 后) (HG-SEC-076)
+    var _params = new URLSearchParams(location.search);
+    var _urlTab = _params.get('tab');
+    if (_urlTab && TABS && TABS.find(function(t){ return t.key === _urlTab; })) {
+      activeTab = _urlTab;  // 白名单校验, 无效忽略
+    }
+    var _urlQ = _params.get('q');
+    if (_urlQ !== null) {
+      // 仅 value 赋值 (无 innerHTML 注入面), URLSearchParams 自动解码 (HG-SEC-074)
+      document.getElementById('searchInput').value = _urlQ;
+    }
+    var _urlSplit = _params.get('split');
+    // Restore saved column widths
+    try {
+      var savedWidths = localStorage.getItem(COL_WIDTHS_KEY);
+      if (savedWidths) {
+        var wmap = JSON.parse(savedWidths);
+        COLUMNS.forEach(function(c) { if (wmap[c.key]) c.width = wmap[c.key]; });
+      }
+    } catch(e) {}
+    // Restore saved split ratio
+    var wrapper = document.querySelector('.wrapper');
+    wrapper.style.setProperty('--spl-ratio', splitRatio+'%');
+
+    // Search visibility
+    if (!showSearch) document.getElementById('searchInput').style.display = 'none';
+    initColToggle();
+    initExport();
+    buildTabs();
+    initThead();
+    applyDensity();
+    render();
+    initSplitDrag();
+    // 默认筛选：options.defaultFilter {key, value, mode} 加载后自动筛选（如大明时间轴默认选中嘉靖）
+    var _df = OPTIONS && OPTIONS.defaultFilter;
+    if (_df && _df.key && _df.value) {
+      quickFilterBy(_df.key, _df.value, _df.mode || 'exact');
+    }
+    // CL004: split 恢复 (render 后; filtered 已按 tab+q 重建; 越界忽略; 有 quickFilter 时下标语义失效跳过)
+    if (_urlSplit !== null && !quickFilter) {
+      var n = parseInt(_urlSplit, 10);
+      if (!isNaN(n) && n >= 0 && n < filtered.length) {
+        activateSplit(filtered[n], n);
+      }
+    }
+  }
+  init();
+
+  /* ═══════════════════════════════════════════
+     Quick Search — Cmd+F overlay
+     ═══════════════════════════════════════════ */
+  var quickSearch = {
+    overlay: document.getElementById('qsOverlay'),
+    input: document.getElementById('qsInput'),
+    active: false,
+
+    open: function() {
+      if (!showSearch) return;
+      // Copy current header search value to popup
+      this.input.value = document.getElementById('searchInput').value;
+      this.overlay.classList.add('active');
+      this.active = true;
+      this.updateMatchCount();
+      setTimeout(function() { quickSearch.input.focus(); quickSearch.input.select(); }, 80);
+    },
+
+    close: function() {
+      // Sync popup value back to header (don't trigger search)
+      document.getElementById('searchInput').value = this.input.value;
+      this.overlay.classList.remove('active');
+      this.active = false;
+    },
+
+    submit: function() {
+      // Sync + trigger search
+      document.getElementById('searchInput').value = this.input.value;
+      this.overlay.classList.remove('active');
+      this.active = false;
+      currentPage = 1;
+      render();
+      syncUrlState();
+    },
+
+    updateMatchCount: function() {
+      var el = document.getElementById('qsMatchCount');
+      if (!el) return;
+      var q = this.input.value.toLowerCase().trim();
+      if (!q) { el.textContent = ''; return; }
+      var cnt = DATA.filter(function(row) {
+        return COLUMNS.some(function(col) {
+          if (col.type === 'actions') return false;
+          return cellText(row[col.key]).toLowerCase().indexOf(q) !== -1;
+        });
+      }).length;
+      el.textContent = '匹配 ' + cnt + ' 条';
+    }
+  };
+
+  // Input: live match count update (no header sync)
+  window.qsOnInput = function() {
+    quickSearch.updateMatchCount();
+  };
+
+  // Keyboard: Enter/Esc handling inside popup
+  window.qsHandleKey = function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); quickSearch.submit(); }
+    else if (e.key === 'Escape') { e.preventDefault(); quickSearch.close(); }
+  };
+
+  // Global keyboard shortcuts
+  document.addEventListener('keydown', function(e) {
+    // Cmd+F / Ctrl+F
+    if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+      if (!showSearch) return;
+      e.preventDefault();
+      quickSearch.open();
+    }
+    // Esc when overlay active
+    if (e.key === 'Escape' && quickSearch.active) {
+      quickSearch.close();
+    }
+  });
+
+  /* ── Keyboard Navigation ── */
+  var kbFocusIdx = -1;
+  document.addEventListener('keydown', function(e) {
+    // Only when not in input
+    if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
+    var tbody = document.getElementById('tbody');
+    var rows = tbody.querySelectorAll('tr:not(.expand-row)');
+    if (!rows.length) return;
+    var pageRows = rows.length;
+    if (e.key === 'ArrowDown') { e.preventDefault(); kbFocusIdx = kbFocusIdx < 0 ? 0 : Math.min(pageRows - 1, kbFocusIdx + 1); highlightKbRow(rows); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); kbFocusIdx = kbFocusIdx < 0 ? pageRows - 1 : Math.max(0, kbFocusIdx - 1); highlightKbRow(rows); }
+    else if (e.key === 'Enter' && kbFocusIdx >= 0) { e.preventDefault(); var r = rows[kbFocusIdx]; if (r) r.click(); }
+  });
+  function highlightKbRow(rows) {
+    rows.forEach(function(r, i) { r.classList.toggle('keyboard-focus', i === kbFocusIdx); });
+    if (kbFocusIdx >= 0 && rows[kbFocusIdx]) rows[kbFocusIdx].scrollIntoView({block:'nearest'});
+  }
+
+  /* ── Batch Operations ── */
+  function updateBatchBar() {
+    if (!showRowSelect) return;
+    var cnt = Object.keys(selectedRows).length;
+    var bar = document.getElementById('batchBar');
+    bar.classList.toggle('active', cnt > 0);
+    document.getElementById('batchCount').textContent = '已选 ' + cnt + ' 条';
+  }
+  var origUpdateStats = updateStats;
+  updateStats = function() { origUpdateStats(); updateBatchBar(); };
+  window.selectAllFiltered = function() { filtered.forEach(function(r, i) { selectedRows[i] = true; }); render(); };
+  window.clearSelection = function() { selectedRows = {}; kbFocusIdx = -1; render(); };
+  window.exportSelectedCSV = function() {
+    var selected = Object.keys(selectedRows).map(function(i) { return filtered[parseInt(i)]; }).filter(Boolean);
+    if (!selected.length) { showToast('未选中任何行'); return; }
+    var cols = visibleCols({excludeActions: true});
+    var csv = '\uFEFF' + cols.map(function(c){return '"'+c.label+'"';}).join(',') + '\n' +
+      selected.map(function(r){ return cols.map(function(c){ return '"'+cellText(r[c.key]).replace(/"/g,'""')+'"'; }).join(','); }).join('\n');
+    var blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+    var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'selected.csv'; a.click();
+    showToast('已导出 ' + selected.length + ' 条');
+  };
+
+  /* ── Fullscreen ── */
+  window.toggleFullscreen = function() {
+    document.querySelector('.wrapper').classList.toggle('fullscreen');
+    showToast(document.querySelector('.wrapper').classList.contains('fullscreen') ? '已进入全屏 (F 退出)' : '已退出全屏');
+  };
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'f' && !e.metaKey && !e.ctrlKey && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+      e.preventDefault(); toggleFullscreen();
+    }
+  });
+
+  /* ── View Presets ── */
+  window.savePreset = function(name) {
+    name = name || ('预设 ' + (new Date()).toLocaleTimeString());
+    var presets = [];
+    try { presets = JSON.parse(localStorage.getItem('web2md:table:presets')) || []; } catch(e) {}
+    var state = {density: density, clickMode: clickMode, splitRatio: splitRatio, colVisibility: colVisibility, sortKey: sortKey, sortAsc: sortAsc, name: name};
+    var json = JSON.stringify(state);
+    if (json.length > MAX_PRESET_SIZE) { showToast('预设过大，请减少列数'); return; }
+    var existing = presets.findIndex(function(p){ return p.name === name; });
+    if (existing >= 0) presets[existing] = state;
+    else { if (presets.length >= MAX_PRESETS) presets.shift(); presets.push(state); }
+    try { localStorage.setItem('web2md:table:presets', JSON.stringify(presets)); } catch(e) { showToast('存储失败'); return; }
+    showToast('已保存: ' + name);
+  };
+  window.loadPreset = function(name) {
+    var presets = [];
+    try { presets = JSON.parse(localStorage.getItem('web2md:table:presets')) || []; } catch(e) {}
+    var p = presets.find(function(p){ return p.name === name; });
+    if (!p) { showToast('预设不存在: ' + name); return; }
+    if (p.density) { density = p.density; applyDensity(); }
+    if (p.clickMode) { clickMode = p.clickMode; }
+    if (p.splitRatio) { splitRatio = p.splitRatio; document.querySelector('.wrapper').style.setProperty('--spl-ratio', p.splitRatio+'%'); }
+    if (p.colVisibility) { colVisibility = p.colVisibility; }
+    if (p.sortKey) { sortKey = p.sortKey; sortAsc = p.sortAsc || true; }
+    initColToggle(); initThead(); render();
+    showToast('已加载: ' + name);
+  };
+  window.deletePreset = function(name) {
+    var presets = [];
+    try { presets = JSON.parse(localStorage.getItem('web2md:table:presets')) || []; } catch(e) {}
+    presets = presets.filter(function(p){ return p.name !== name; });
+    try { localStorage.setItem('web2md:table:presets', JSON.stringify(presets)); } catch(e) {}
+    initColToggle();
+    showToast('已删除: ' + name);
+  };
+
+
+  /* ═══════════════════════════════════════════
+     web2md 页面 patch：分栏详情头部复制入口（当前篇）
+     与旧页 v2.0「详情工具栏」能力对等：🤖 复制给 AI / ⌨️ 复制句柄（+ 📋 复制命令）
+     数据面为静态 js（无 info API），故不做分栏详情 fetch patch
+     ═══════════════════════════════════════════ */
+  var _w2mOrigRenderSplitPreview = renderSplitPreview;
+  renderSplitPreview = function(row) {
+    _w2mOrigRenderSplitPreview(row);
+    var header = document.getElementById('splitPreviewHeader');
+    if (!header) return;
+    var box = document.createElement('span');
+    box.className = 'sp-tools';
+    box.innerHTML =
+      '<button class="sp-nav" id="btnCopyAi" title="复制 AI 上下文块（元信息 + 智读分析）"' +
+      ' onclick="web2mdCopy(window.splitRow, \'ai\', event)">🤖</button>' +
+      '<button class="sp-nav" id="btnCopyHandle" title="复制命令行句柄（agent 自取最新）"' +
+      ' onclick="web2mdCopy(window.splitRow, \'handle\', event)">⌨️</button>' +
+      '<button class="sp-nav" id="btnCopyInfo" title="复制 web2md info 命令"' +
+      ' onclick="web2mdCopy(window.splitRow, \'info\', event)">📋</button>';
+    var closeBtn = header.querySelector('.sp-close');
+    if (closeBtn) header.insertBefore(box, closeBtn); else header.appendChild(box);
+  };
+
+  /* ═══════════════════════════════════════════
+     web2md 数据层（单通道：<script src="/web2md-data.js"> → window.WEB2MD_DATA）
+     file:// 直开可用：不发 fetch、不依赖服务、无跨域；数据 js 缺失/形状不符 → 显式错误态（不给静默空表）
+     契约（§15.5 冻结）:
+       {items:[{url,title,platform,author,publish_date,article_id,
+                tags:[{id,display_name}], projects:[{owner_repo,url,cloned}],
+                completed_steps:[], last_updated, reading_suggestion}],
+        stats:{total, updated_at, remote_max_id, fetched_at, unfetched}}
+     鲁棒降级：契约字段缺失 → 标签列空 / 关联计数 0 / 状态空 / 同步状态段不渲染（不报错、不伪造）
+     ═══════════════════════════════════════════ */
+  var RANGE_KEY = 'web2md:table:range';
+  var RANGE_VALUES = ['today', '7d', '30d', 'all'];
+  var RANGE_DEFAULT = 'all';           // 本页默认「所有」（文章多为历史归档；today 常为空）
+  var DATE_KEY = 'publish_date';       // range 下界比较字段（缺失回退 last_updated/timestamp/fetched_at）
+
+  function w2mNormalizeRange(v) {
+    return RANGE_VALUES.indexOf(v) !== -1 ? v : RANGE_DEFAULT;
+  }
+
+  // range 优先级：URL(?range=) > localStorage > 默认
+  function w2mResolveRange() {
+    var fromUrl = null;
+    try { fromUrl = new URLSearchParams(location.search).get('range'); } catch(e) {}
+    if (fromUrl !== null && fromUrl !== undefined && RANGE_VALUES.indexOf(fromUrl) !== -1) return fromUrl;
+    try { return w2mNormalizeRange(localStorage.getItem(RANGE_KEY)); } catch(e) { return RANGE_DEFAULT; }
+  }
+
+  // range 时间下界（与 git-cloner 页/CLI 同口径: today/7d/30d/all）
+  function w2mRangeLower(range) {
+    function ymd(dt) {
+      return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') +
+             '-' + String(dt.getDate()).padStart(2, '0');
+    }
+    var now = new Date();
+    if (range === 'today') return ymd(now);
+    if (range === '7d') return ymd(new Date(now.getTime() - 7 * 86400000));
+    if (range === '30d') return ymd(new Date(now.getTime() - 30 * 86400000));
+    return null;                        // all / 未知 → 不过滤
+  }
+
+  // 行的日期（契约 publish_date 优先；缺失回退 last_updated/timestamp/fetched_at）
+  function w2mRowDate(it) {
+    var v = it[DATE_KEY] || it.last_updated || it.timestamp || it.fetched_at || '';
+    v = String(v);
+    return v.length >= 10 ? v.slice(0, 10) : '';
+  }
+
+  function w2mFilterByRange(items, range) {
+    var lower = w2mRangeLower(range);
+    if (lower === null) return items.slice();
+    return items.filter(function(it) { var d = w2mRowDate(it); return !!d && d >= lower; });
+  }
+
+  // 行归一：契约字段优先；旧形状（{articles} 且键名 id/timestamp）兼容映射；
+  //         契约缺字段一律空值（不伪造），并预算 _tagIds 供标签筛选
+  function w2mNormalizeRow(src) {
+    var it = {};
+    it.article_id = String(src.article_id || src.id || '');
+    it.id = it.article_id;                 // CL024 块构建器/句柄读 id（契约 article_id 的别名）
+    it.title = String(src.title || '');
+    it.url = String(src.url || '');
+    it.platform = String(src.platform || '');
+    it.author = String(src.author || '');
+    it.publish_date = String(src.publish_date || src.timestamp || w2mRowDate(src));
+    it.tags = normalizeTagArray(src.tags);
+    it._tagIds = it.tags.map(tagIdOf).filter(Boolean);
+    it.projects = Array.isArray(src.projects) ? src.projects : [];
+    var steps = src.completed_steps;
+    it.completed_steps = Array.isArray(steps) ? steps.join('、') : String(steps || '');
+    it.last_updated = String(src.last_updated || '');
+    it.reading_suggestion = String(src.reading_suggestion || '');
+    it.reading_reason = String(src.reading_reason || '');
+    // --ai 块口径字段（旧形状含正文；瘦身后 step2 空 → 块走「尚未生成」分支，不伪造）
+    it.fetched_at = String(src.fetched_at || '');
+    it.step2 = String(src.step2 || '');
+    it.local_dir = String(src.local_dir || '');
+    it.local_article = String(src.local_article || '');
+    it.local_analyze = String(src.local_analyze || '');
+    return it;
+  }
+
+  // 平台 tabs：按 platform 去重（计数降序，最多 6 个）+ TABS[0]「全部」
+  function buildPlatformTabs() {
+    var counts = {};
+    DATA.forEach(function(r) {
+      var p = String(r.platform || '').trim();
+      if (!p) return;
+      counts[p] = (counts[p] || 0) + 1;
+    });
+    var arr = Object.keys(counts).map(function(k) { return {key: k, label: k, count: counts[k]}; });
+    arr.sort(function(a, b) { return b.count - a.count || a.key.localeCompare(b.key, 'zh'); });
+    TABS.length = 0;
+    TABS.push({key: 'all', label: '全部'});
+    arr.slice(0, 6).forEach(function(t) { TABS.push({key: t.key, label: t.label, field: 'platform'}); });
+  }
+
+  // 数据源：契约 items 优先；旧形状 articles 兼容（本批瘦身落地前的过渡态）
+  function w2mSource() {
+    var d = window.WEB2MD_DATA;
+    if (!d) return null;
+    if (Array.isArray(d.items)) return d.items;
+    if (Array.isArray(d.articles)) return d.articles;
+    return null;
+  }
+
+  function w2mRenderItems(items) {
+    DATA.length = 0;
+    items.forEach(function(it) { DATA.push(w2mNormalizeRow(it)); });
+    currentPage = 1;
+    buildPlatformTabs();
+    // CL036: 标签库（taxonomy/顶层 groups+tags 优先，缺失则行内 tags 聚合）→ 再恢复 URL/localStorage 筛选
+    window.tableBuildTagIndex(window.WEB2MD_DATA);
+    initColToggle();
+    buildTabs();
+    initThead();
+    render();
+    window.tableRestoreTagState();
+    w2mRenderStats();
+  }
+
+  // 统计行：数据文件统计 + 同步状态（stats.remote_max_id/fetched_at/unfetched）
+  //   缺全部三个字段 → 整行不显示；unfetched 缺失但水位存在 → 只报水位，不臆断「齐平」
+  function w2mRenderStats() {
+    var box = document.getElementById('w2mStats');
+    if (!box) return;
+    var d = window.WEB2MD_DATA;
+    if (!d || !d.stats) { box.style.display = 'none'; box.textContent = ''; return; }
+    var s = d.stats;
+    var has = function(v) { return v !== undefined && v !== null && v !== ''; };
+    var parts = [];
+    parts.push('📦 数据文件: ' + (has(s.total) ? Number(s.total).toLocaleString('en-US') : '?') +
+               ' 篇 · 生成于 ' + escapeHtml(String(s.updated_at || '未知')));
+    if (has(s.unfetched) || has(s.remote_max_id) || has(s.fetched_at)) {
+      var stamp = has(s.fetched_at) ? '（截至 ' + escapeHtml(String(s.fetched_at)) + '）' : '';
+      var n = parseInt(s.unfetched, 10);
+      if (has(s.unfetched) && !isNaN(n)) {
+        parts.push(n > 0
+          ? '<span class="sync-warn">⚠️ 远端新增 ' + Number(n).toLocaleString('en-US') +
+            ' 条未拉齐 → 运行 <code>web2md sync</code></span>'
+          : '<span class="sync-ok">✅ 与 Supabase 齐平' + stamp + '</span>');
+      } else if (has(s.remote_max_id)) {
+        parts.push('🔄 同步水位: remote max id ' + escapeHtml(String(s.remote_max_id)) + stamp +
+                   '（stats.unfetched 缺失 → 不判定拉齐态）');
+      }
+    }
+    box.innerHTML = parts.join('<span class="stat-sep">·</span>');
+    box.style.display = 'block';
+  }
+
+  // 分栏：数据到位后补做 ?split 恢复（runtime init() 时 DATA 仍为空 → 越界忽略）
+  var w2mPendingSplit = (function() {
+    try { return new URLSearchParams(location.search).get('split'); } catch(e) { return null; }
+  })();
+
+  // CL036: 标签筛选起手快照（首次 syncUrlState 会把未生效的 ?tag/?tagGroup 剔除，故先行快照）
+  window.tablePendingTagState = (function() {
+    try {
+      var p = new URLSearchParams(location.search);
+      var g = p.get('tagGroup');
+      var ts = p.getAll('tag');
+      return (g !== null || ts.length) ? {group: g || '', tags: ts} : null;
+    } catch(e) { return null; }
+  })();
+
+  function w2mRestoreUrlSplit() {
+    if (w2mPendingSplit === null || w2mPendingSplit === undefined) return;
+    var raw = w2mPendingSplit;
+    w2mPendingSplit = null;                        // 只恢复一次
+    if (window.splitActive) return;
+    var n = parseInt(raw, 10);
+    if (!isNaN(n) && n >= 0 && n < filtered.length) window.openSplitAt(n, 'title');
+  }
+
+  // 显式错误态（数据 js 缺失/形状不符）：不静默给空表
+  function w2mNoDataState() {
+    window.w2mChannel = 'no-js';
+    DATA.length = 0;
+    window.tableBuildTagIndex(null);
+    initThead();
+    render();
+    w2mRenderStats();
+    var el = document.getElementById('emptyState');
+    if (el) {
+      var icon = el.querySelector('.icon');
+      var text = el.querySelector('span:not(.icon)');
+      if (icon) icon.textContent = '⚠️';
+      if (text) text.textContent = '数据文件未加载（web2md-data.js 缺失或形状不符：无 items/articles）——请执行 web2md browser --cache';
+    }
+    showToast('⚠️ web2md-data.js 未加载或形状不符');
+    return false;
+  }
+
+  // 暴露 w2mLoadRange 供外部 range tab 切换调用（本页无服务端，range 本地过滤）
+  window.w2mLoadRange = function(range) {
+    if (window.splitActive) closeSplit();          // 切换 range 前关闭分栏，避免下标错位
+    var stored = w2mNormalizeRange(range || RANGE_DEFAULT);
+    window.w2mRange = stored;                      // 供 runtime syncUrlState 写入 ?range=
+    try { localStorage.setItem(RANGE_KEY, stored); } catch(e) {}
+    syncUrlState();
+    var src = w2mSource();
+    if (src === null) return w2mNoDataState();
+    window.w2mChannel = 'js';
+    var items = w2mFilterByRange(src, stored);
+    w2mRenderItems(items);
+    w2mRestoreUrlSplit();                          // 数据到位 → 补做 ?split 恢复
+    return true;
+  };
+
+  // 启动：range（URL 优先）→ 取数（同步 js）→ 渲染 + 统计行
+  (function w2mInit() {
+    var stored = w2mResolveRange();
+    window.w2mRange = stored;
+    window.w2mLoadRange(stored);
+  })();
+
+
+})();
+</script>
+<script>
+// ═══════════════════════════════════════════
+// web2md v3.0.0 页面脚本（runtime 之外）：CL024 块构建器 + 复制入口 + range tabs
+// ═══════════════════════════════════════════
+// 数据面句柄（页面级；data js 未加载时降级为空壳 —— 控制台/外部脚本与旧页 v2.0 契约同名）
+const WEB2MD = window.WEB2MD_DATA || {items: [], stats: {}};
+/* ═══════════════════════════════════════════
+   CL024 块构建器区段（SCRIPT-MINER-CL024；本版逐字保留）
+   块口径与 CLI `web2md info <ID> --ai`（web2md.py:_build_ai_block_info）逐字段对齐
+   （字段序 / 空值省略 / step2 读取后 trim；由 web2md-test.py 的 node 对照测试钉住）
+   ═══════════════════════════════════════════ */
+/* WEB2MD_BLOCK_BUILDER_START */
+function web2mdBuildAiBlock(article) {
+    if (!article) return '';
+    const lines = ['[web2md] ' + (article.title || 'N/A')];
+
+    const url = String(article.url || '');
+    if (url) lines.push('地址: ' + url);
+    if (article.id) lines.push('文章ID: ' + article.id);
+    const fetched = String(article.fetched_at || '');
+    if (fetched && fetched !== 'N/A') {
+        lines.push('抓取时间: ' + fetched.slice(0, 16).replace('T', ' '));
+    }
+    const suggestion = String(article.reading_suggestion || '');
+    if (suggestion) lines.push('阅读建议: ' + suggestion);
+    const reason = String(article.reading_reason || '');
+    if (reason) lines.push('阅读理由: ' + reason);
+    if (article.local_article) lines.push('本地原文: ' + article.local_article);
+
+    const body = String(article.step2 || '').trim();
+    if (body) {
+        lines.push('智读分析:');
+        lines.push(body);
+    } else {
+        // 缺失不伪造：显式标注未生成 + 路径（与 CLI 同形）
+        lines.push('智读分析:（尚未生成：' + (article.local_analyze || '') + '）');
+    }
+    return lines.join('\n');
+}
+
+// 句柄（D3 A，用户 2026-09-20 选定）：命令 + 本地路径，agent 自取最新
+function web2mdBuildHandle(article) {
+    if (!article) return '';
+    const where = article.local_dir ? '（' + article.local_dir + '）' : '';
+    return '运行 web2md info ' + article.id + ' --json 并阅读本地 step1/step2 原文' + where + '后回答：';
+}
+/* WEB2MD_BLOCK_BUILDER_END */
+
+let web2mdToastTimer = null;
+function web2mdToast(message) {
+    const el = document.getElementById('w2mToast');
+    if (!el) return;
+    el.textContent = message;                 // R5: 只给摘要，不回显全文
+    el.classList.add('show');
+    clearTimeout(web2mdToastTimer);
+    web2mdToastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+}
+
+/** CL043: 剪贴板回退（canonical 口径 —— 能力判断**前置**，不得依赖 .catch 兜底） */
+function copyText(text, okMsg, failMsg) {
+    const done = () => { if (okMsg) web2mdToast(okMsg); };
+    const fail = () => web2mdToast(failMsg || '❌ 复制失败，请手动选中复制');
+    const fallback = () => {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.cssText = 'position:fixed;top:-1000px;left:-1000px;opacity:0';
+        document.body.appendChild(ta);
+        ta.select();
+        ta.setSelectionRange(0, text.length);
+        let ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+        document.body.removeChild(ta);
+        if (ok) { done(); } else { fail(); }
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(done).catch(fallback);
+    } else {
+        fallback();   // 非安全上下文 ⇒ 直接回退（不靠 catch）
+    }
+}
+
+// R4: stopPropagation —— 复制不触发页内导航 / 详情切换
+function web2mdCopy(article, kind, event) {
+    if (event && event.stopPropagation) event.stopPropagation();
+    if (!article) { web2mdToast('⚠️ 未选择文章'); return; }
+    let text;
+            if (kind === 'info') text = web2mdBuildInfoCmd(article);
+            else if (kind === 'handle') text = web2mdBuildHandle(article);
+            else text = web2mdBuildAiBlock(article);
+    if (!text) { web2mdToast('⚠️ 没有可复制的内容'); return; }
+    const label = kind === 'info' ? 'info 命令' : (kind === 'handle' ? '命令行句柄' : 'AI 上下文块');
+    copyText(text, '✅ 已复制 ' + label + ' · ' + text.length.toLocaleString() + ' 字符');
+}
+
+// 📋 复制命令（CL036 §15.5 actions）：CLI 取数命令（url 优先；缺 url 回落 article_id）
+function web2mdBuildInfoCmd(article) {
+    if (!article) return '';
+    const target = article.url || article.article_id || article.id || '';
+    if (!target) return '';
+    return 'web2md info ' + target;
+}
+
+// CL036 actions 列 handler 入口（runtime: window.<handler>(event, row)，row 为行 JSON 副本）
+//   📋 复制命令：CLI 取数命令（url 优先，缺 url 回落 article_id）
+//   🤖 复制给 AI：--ai 上下文块（元信息 + 智读分析；瘦身数据下走「尚未生成」分支，不伪造）
+//   ⌨️ 复制句柄：命令行 + 本地路径（agent 自取最新）
+window.web2mdCopyInfo = function(event, row) { web2mdCopy(row, 'info', event); };
+window.web2mdCopyAiBlock = function(event, row) { web2mdCopy(row, 'ai', event); };
+window.web2mdCopyHandle = function(event, row) { web2mdCopy(row, 'handle', event); };
+
+// range tabs 初始化 + 切换 handler（RANGE_KEY 由 runtime 内的 w2mInit/w2mLoadRange 写入）
+(function initRangeTabs() {
+  var stored = 'all';
+  try { stored = localStorage.getItem('web2md:table:range') || 'all'; } catch(e) {}
+  if (['today','7d','30d','all'].indexOf(stored) === -1) stored = 'all';
+  var box = document.getElementById('rangeTabs');
+  if (!box) return;
+  box.innerHTML = RANGE_TABS.map(function(t) {
+    return '<button class="range-tab' + (t.key === stored ? ' active' : '') +
+           '" data-range="' + t.key + '" onclick="selectRange(\'' + t.key + '\')">' +
+           t.label + '</button>';
+  }).join('');
+})();
+
+window.selectRange = function(range) {
+  document.querySelectorAll('.range-tab').forEach(function(btn) {
+    btn.classList.toggle('active', btn.dataset.range === range);
+  });
+  // 持久化 + ?range= URL 同步都在 w2mLoadRange 内完成（单一入口）
+  if (window.w2mLoadRange) window.w2mLoadRange(range);
+  // 切换 range 后更新空态文案（runtime render() 会重置 #emptyState 文本）
+  var emptyEl = document.getElementById('emptyState');
+  if (emptyEl && window.w2mChannel !== 'no-js') {
+    var text = emptyEl.querySelector('span:not(.icon)');
+    if (text && RANGE_EMPTY[range]) text.textContent = RANGE_EMPTY[range].replace(/^📭\s*/, '');
+  }
+};
+</script>
+<!-- build: web2md @ script-miner 921a3b8a 2026-11-15 17:01 -->
+</body>
+</html>
