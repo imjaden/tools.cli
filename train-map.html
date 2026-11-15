@@ -217,7 +217,34 @@ Version
             white-space: nowrap;
             text-align: center;
             pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1px;
+            line-height: 1.1;
         }
+
+        /* 站序徽标（在站点图标上方、站名之上） */
+        .city-order {
+            display: inline-block;
+            min-width: 13px;
+            padding: 0 3px;
+            height: 13px;
+            line-height: 13px;
+            border-radius: 7px;
+            background: #34495e;
+            color: #fff;
+            font-size: 9px;
+            font-weight: 700;
+            text-shadow: none;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+        }
+        .city-label-start .city-order { background: #27ae60; }
+        .city-label-end .city-order { background: #e74c3c; }
+        .city-name { font-size: 10px; }
+
+        /* 站名/序号整体隐藏（控件 👁 切换） */
+        .hide-city-labels .city-label { display: none; }
         
         .city-label-start { color: #27ae60; font-size: 10px; }
         .city-label-end { color: #e74c3c; font-size: 10px; }
@@ -468,7 +495,7 @@ Version
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
             z-index: 1000;
             width: 400px;
-            max-height: 70vh;
+            max-height: 90vh;
             overflow: hidden;
             display: flex;
             flex-direction: column;
@@ -602,24 +629,33 @@ Version
             color: #fff;
             border: 2px solid #fff;
             border-radius: 50%;
-            width: 28px !important;
-            height: 28px !important;
-            line-height: 24px;
+            width: 20px !important;
+            height: 20px !important;
+            line-height: 17px;
             text-align: center;
-            font-size: 12px;
+            font-size: 10px;
             font-weight: bold;
             box-shadow: 0 1px 4px rgba(0,0,0,0.4);
         }
+        .station-marker-mid {
+            background: #3498db;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+            box-sizing: border-box;
+        }
+        .station-marker-dimmed { opacity: .45; }
+
         .station-marker-to {
             background: #e74c3c;
             color: #fff;
             border: 2px solid #fff;
             border-radius: 50%;
-            width: 28px !important;
-            height: 28px !important;
-            line-height: 24px;
+            width: 20px !important;
+            height: 20px !important;
+            line-height: 17px;
             text-align: center;
-            font-size: 12px;
+            font-size: 10px;
             font-weight: bold;
             box-shadow: 0 1px 4px rgba(0,0,0,0.4);
         }
@@ -730,7 +766,7 @@ Version
         @media (max-width: 768px) {
             .timetable-panel {
                 width: 280px;
-                max-height: 50vh;
+                max-height: 70vh;
                 top: 5px;
                 right: 5px;
             }
@@ -750,6 +786,7 @@ Version
         var L_NO_TOUCH = false;
         var L_DISABLE_3D = true;
     </script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 
     <link rel="canonical" href="https://tools.cli.jaden.tech/train-map.html">
     <link rel="icon" href="/favicon.png">
@@ -854,6 +891,7 @@ Version
         
         // 全局车次数据（从 Supabase 加载）
         let TRAIN_DATA = {};
+        let CURRENT_TRAIN = null;   // v1.10: 当前渲染的车次（导出图片命名用）
         
         // G80 默认车次数据（加载失败时使用）
         const DEFAULT_TRAIN_DATA = {
@@ -1024,6 +1062,59 @@ Version
          * @param {string} message - 错误消息内容
          * @description 在页面顶部显示红色错误提示，5秒后自动消失
          */
+        /**
+         * 【7.3】导出当前界面为 PNG（地图 + 时刻表面板）
+         * 文件名: 高铁{train_no}路线地图-{YYYYMMDD}.png
+         * 底图跨域失败时自动降级为「无底图版」并提示
+         */
+        async function exportMapImage(btn) {
+            if (typeof html2canvas !== 'function') {
+                showError('图片导出不可用（html2canvas 未加载）');
+                return;
+            }
+            const t = CURRENT_TRAIN || {};
+            const no = t.train_no || '列车';
+            const date = (t.depart_date || new Date().toISOString().slice(0, 10)).replace(/-/g, '');
+            const filename = `高铁${no}路线地图-${date}.png`;
+            const opts = {
+                useCORS: true,
+                scale: 2,
+                backgroundColor: '#ffffff',
+                logging: false,
+                width: window.innerWidth,
+                height: window.innerHeight
+            };
+            const save = (canvas) => {
+                canvas.toBlob((blob) => {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url; a.download = filename;
+                    document.body.appendChild(a); a.click(); a.remove();
+                    setTimeout(() => URL.revokeObjectURL(url), 4000);
+                }, 'image/png');
+            };
+            if (btn) btn.disabled = true;
+            try {
+                save(await html2canvas(document.body, opts));
+            } catch (e) {
+                console.warn('导出失败，尝试无底图模式:', e);
+                const pane = document.querySelector('.leaflet-tile-pane');
+                if (!pane) { showError('图片导出失败：' + (e && e.message || '')); return; }
+                const prev = pane.style.display;
+                pane.style.display = 'none';
+                try {
+                    save(await html2canvas(document.body, opts));
+                    showError('底图跨域受限，已导出无底图版本');
+                } catch (e2) {
+                    showError('图片导出失败：' + (e2 && e2.message || '未知错误'));
+                } finally {
+                    pane.style.display = prev;
+                }
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
         function showError(message) {
             const errorDiv = document.createElement('div');
             errorDiv.className = 'error-message';
@@ -1208,8 +1299,7 @@ Version
             const lng = coords[1];
             const kmRadius = coords[2];
             
-            const stationNumber = index + 1;
-            const name = station.stationName + " (" + stationNumber + "/" + totalStations + ")";
+            const stationNumber = station.stationNo ? Number(station.stationNo) || index + 1 : index + 1;
             
             const isStart = index === 0;
             const isEnd = index === totalStations - 1;
@@ -1247,9 +1337,10 @@ Version
             
             const labelIcon = L.divIcon({
                 className: labelClass,
-                html: name,
-                iconSize: [100, 20],
-                iconAnchor: [50, -15]
+                html: '<span class="city-order">' + stationNumber + '</span>'
+                    + '<span class="city-name">' + station.stationName + '</span>',
+                iconSize: [100, 34],
+                iconAnchor: [50, -14]
             });
             
             const labelMarker = L.marker([lat, lng], {
@@ -1293,15 +1384,19 @@ Version
                 const pinIcon = L.divIcon({
                     className: isFrom ? 'station-marker-from' : 'station-marker-to',
                     html: isFrom ? '起' : '终',
-                    iconSize: [28, 28],
-                    iconAnchor: [14, 14]
+                    iconSize: [20, 20],
+                    iconAnchor: [10, 10]
                 });
                 marker = L.marker([lat, lng], { icon: pinIcon, zIndexOffset: 1000 }).addTo(map);
             } else {
-                marker = L.marker([lat, lng]).addTo(map);
-                if (dimmed) {
-                    marker.getElement().style.opacity = '0.45';
-                }
+                // v1.10: 默认 pin（25×41）改为 18px 圆点，整体视觉约为原来的 2/3
+                const dotIcon = L.divIcon({
+                    className: dimmed ? 'station-marker-mid station-marker-dimmed' : 'station-marker-mid',
+                    html: '',
+                    iconSize: [18, 18],
+                    iconAnchor: [9, 9]
+                });
+                marker = L.marker([lat, lng], { icon: dotIcon }).addTo(map);
             }
             
             const popup = L.popup({
@@ -1464,6 +1559,7 @@ Version
          * @description 渲染单个车次的路线、站点和时刻表，并调整地图视野
          */
         function renderTrainData(trainData) {
+            CURRENT_TRAIN = trainData || null;
             clearMapElements();
             
             currentTrainData = trainData;
@@ -1499,7 +1595,7 @@ Version
             
             map.fitBounds(bounds, {
                 padding: paddingValue,
-                maxZoom: 10
+                maxZoom: 12
             });
         }
         
@@ -1566,7 +1662,7 @@ Version
                 
                 map.fitBounds(bounds, {
                     padding: paddingValue,
-                    maxZoom: 10
+                    maxZoom: 12
                 });
             }
         }
@@ -1794,6 +1890,8 @@ Version
                 zoom: 6,
                 minZoom: 4,
                 maxZoom: 16,
+                zoomSnap: 0.25,          // 允许 1/4 级缩放，能停在“刚好包住全线路”的比例
+                zoomDelta: 0.5,          // 按钮/滚轮每次半级
                 zoomControl: false,
                 preferCanvas: true,
                 tap: true,
@@ -1820,6 +1918,17 @@ Version
                 const zoomOutBtn = L.DomUtil.create('button', 'zoom-btn zoom-btn-zoom-out', container);
                 zoomOutBtn.innerHTML = '-';
                 zoomOutBtn.title = '缩小';
+
+                const divider2 = L.DomUtil.create('div', 'divider', container);
+                divider2.style.cssText = 'height: 1px; background: #e9ecef; margin: 2px 0;';
+
+                const toggleBtn = L.DomUtil.create('button', 'switch-btn toggle-labels-btn', container);
+                toggleBtn.innerHTML = '<i class="fas fa-eye"></i>';
+                toggleBtn.title = '显示/隐藏 站名与序号';
+
+                const saveBtn = L.DomUtil.create('button', 'switch-btn save-image-btn', container);
+                saveBtn.innerHTML = '<i class="fas fa-camera"></i>';
+                saveBtn.title = '保存为图片';
                 
                 L.DomEvent.disableClickPropagation(container);
                 L.DomEvent.disableScrollPropagation(container);
@@ -1830,11 +1939,23 @@ Version
                 
                 L.DomEvent.on(zoomInBtn, 'click', L.DomEvent.stopPropagation);
                 L.DomEvent.on(zoomInBtn, 'click', L.DomEvent.preventDefault);
-                L.DomEvent.on(zoomInBtn, 'click', () => map.zoomIn());
+                L.DomEvent.on(zoomInBtn, 'click', () => map.setZoom(map.getZoom() + 0.5));
                 
                 L.DomEvent.on(zoomOutBtn, 'click', L.DomEvent.stopPropagation);
                 L.DomEvent.on(zoomOutBtn, 'click', L.DomEvent.preventDefault);
-                L.DomEvent.on(zoomOutBtn, 'click', () => map.zoomOut());
+                L.DomEvent.on(zoomOutBtn, 'click', () => map.setZoom(map.getZoom() - 0.5));
+
+                L.DomEvent.on(toggleBtn, 'click', L.DomEvent.stopPropagation);
+                L.DomEvent.on(toggleBtn, 'click', L.DomEvent.preventDefault);
+                L.DomEvent.on(toggleBtn, 'click', () => {
+                    const host = document.getElementById('map');
+                    const hidden = host.classList.toggle('hide-city-labels');
+                    toggleBtn.innerHTML = hidden ? '<i class="fas fa-eye-slash"></i>' : '<i class="fas fa-eye"></i>';
+                });
+
+                L.DomEvent.on(saveBtn, 'click', L.DomEvent.stopPropagation);
+                L.DomEvent.on(saveBtn, 'click', L.DomEvent.preventDefault);
+                L.DomEvent.on(saveBtn, 'click', () => exportMapImage(saveBtn));
                 
                 return container;
             };
@@ -1850,6 +1971,7 @@ Version
                     attribution: "高德地图",
                     subdomains: "abc",
                     detectRetina: true,
+                    crossOrigin: 'anonymous',   // v1.10: 让 html2canvas 能读像素（高德已 ACAO:*）
                     tms: false,
                     opacity: 1,
                     updateWhenIdle: true
@@ -2138,6 +2260,6 @@ Version
          */
         document.addEventListener('DOMContentLoaded', main);
     </script>
-<!-- build: train-map @ script-miner 921a3b8a 2026-11-15 17:01 -->
+<!-- build: train-map @ script-miner eaaf17b8 2026-11-15 17:07 -->
 </body>
 </html>
