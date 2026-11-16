@@ -26,6 +26,11 @@ Sublime Text
 - Command + k, Command + j 展示所有函数代码
 
 Version
+- v2.0.4@2026/11/16
+  1. 购票段自动推导：URL 无 from/to 时回退解析 train_name 的 A->B（站名归一，去尾缀「站」），仍失败才回退全程 ⇒ 修复「CLI 有上/下车站、页面无乘车路段」
+  2. 车次模糊匹配口径改为「今天优先、否则离今天最近」，命中多条时蓝色提示可用精确 ?no=YYYYMMDD-车次
+  3. 站序并入圆点（图标与序号同一中心，22px）、站名单独一行置于圆点下方，三层变两层
+  4. 站名碰撞消解：相交即逐行下移；zoom<7 只保留圆点内序号
 - v2.0.3@2026/11/15
   1. 新增购票段高亮：URL from/to 参数解析起终点，路线/标记/时刻表/徽标联动着色
   2. 购票段起终点特殊标记（起/终），段外站点降透明度
@@ -224,27 +229,13 @@ Version
             line-height: 1.1;
         }
 
-        /* 站序徽标（在站点图标上方、站名之上） */
-        .city-order {
-            display: inline-block;
-            min-width: 13px;
-            padding: 0 3px;
-            height: 13px;
-            line-height: 13px;
-            border-radius: 7px;
-            background: #34495e;
-            color: #fff;
-            font-size: 9px;
-            font-weight: 700;
-            text-shadow: none;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.25);
-        }
-        .city-label-start .city-order { background: #27ae60; }
-        .city-label-end .city-order { background: #e74c3c; }
-        .city-name { font-size: 10px; }
+        /* 站名（v2.0.4：序号已并入圆点，标签只留站名一行） */
+        .city-name { font-size: 10px; display: inline-block; }
 
-        /* 站名/序号整体隐藏（控件 👁 切换） */
+        /* 站名整体隐藏（控件 👁 切换）；zoom < 7 只保留圆点内序号 */
         .hide-city-labels .city-label { display: none; }
+        .hide-city-labels .station-order { visibility: hidden; }
+        .hide-city-names .city-label { display: none; }
         
         .city-label-start { color: #27ae60; font-size: 10px; }
         .city-label-end { color: #e74c3c; font-size: 10px; }
@@ -326,6 +317,21 @@ Version
             border-radius: 8px;
             z-index: 10000;
             font-size: 14px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        /* 信息性提示（非故障：如同名车次多条按最近日期显示） */
+        .notice-message {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #2980b9;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            z-index: 10000;
+            font-size: 13px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.2);
         }
         
@@ -643,6 +649,22 @@ Version
             border-radius: 50%;
             box-shadow: 0 1px 3px rgba(0,0,0,0.35);
             box-sizing: border-box;
+            /* v2.0.4: 序号并入圆点 ⇒ 18px 放不下两位数字，回到 22px */
+            width: 22px !important;
+            height: 22px !important;
+            color: #fff;
+            font-size: 10px;
+            font-weight: 700;
+            line-height: 18px;
+            text-align: center;
+        }
+        .station-order {
+            display: inline-block;
+            color: #fff;
+            font-size: 10px;
+            font-weight: 700;
+            line-height: 1;
+            text-shadow: none;
         }
         .station-marker-dimmed { opacity: .45; }
 
@@ -1028,23 +1050,84 @@ Version
         }
 
         /**
+         * 【4.1.2.1】站名归一（去空白与尾缀「站」）
+         * @description 与 CLI `_normalize_station_name()` 同规则：票面常写「上海虹桥站」，
+         *              时刻表写「上海虹桥」，直接比较会漏匹配
+         */
+        function normalizeStationName(name) {
+            return String(name || '').trim().replace(/站$/, '');
+        }
+
+        /**
+         * 【4.1.2.2】按站名在 stations 中定位索引（先精确、再归一匹配）
+         * @returns {number} 索引，未找到 -1
+         */
+        function findStationIndex(stations, name) {
+            if (!stations || !name) return -1;
+            const exact = stations.findIndex(s => s.stationName === name);
+            if (exact !== -1) return exact;
+            const target = normalizeStationName(name);
+            if (!target) return -1;
+            return stations.findIndex(s => normalizeStationName(s.stationName) === target);
+        }
+
+        /**
+         * 【4.1.2.3】从车次名称推导购票段
+         * @param {object} trainData - 车次数据（train_name 形如 '上海虹桥->郑州东'）
+         * @returns {object|null} { from, to, fromIndex, toIndex, source:'train_name' }
+         * @description 票载起终站是车次记录的固有字段（CLI 的 🟢上车站/🔴下车站也据此判定）；
+         *              页面原先只认 URL from/to ⇒「CLI 有上下车站、页面无乘车路段」
+         */
+        function deriveSegmentFromTrainName(trainData) {
+            const route = trainData && trainData.train_name;
+            if (!route || route === 'UnSet' || String(route).indexOf('->') === -1) return null;
+            const parts = String(route).split('->');
+            const boardName = (parts[0] || '').trim();
+            const alightName = (parts[1] || '').trim();
+            if (!boardName || !alightName) return null;
+            const stations = trainData.stations || [];
+            const fromIndex = findStationIndex(stations, boardName);
+            const toIndex = findStationIndex(stations, alightName);
+            if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return null;
+            return {
+                from: stations[fromIndex].stationName,
+                to: stations[toIndex].stationName,
+                fromIndex,
+                toIndex,
+                source: 'train_name'
+            };
+        }
+
+        /**
          * 【4.1.3】解析购票段（起终点）
          * @param {object} trainData - 车次数据
-         * @returns {object|null} { from, to, fromIndex, toIndex }，未提供或不匹配返回 null
-         * @description 读取 URL from/to 参数，在 stations 中定位索引；不匹配则回退为全程高亮
+         * @returns {object|null} { from, to, fromIndex, toIndex, source }，无可用起终点返回 null（全程高亮）
+         * @description 顺序：URL from/to（精确→归一匹配）→ 回退 train_name 的 A->B → 仍失败回退全程
          */
         function resolvePurchasedSegment(trainData) {
+            if (!trainData || !trainData.stations) return null;
             const from = getUrlParam('from');
             const to = getUrlParam('to');
-            if (!from || !to || !trainData || !trainData.stations) return null;
-            const stations = trainData.stations;
-            const fromIndex = stations.findIndex(s => s.stationName === from);
-            const toIndex = stations.findIndex(s => s.stationName === to);
-            if (fromIndex === -1 || toIndex === -1) {
-                console.warn(`购票段起终点未在车次站点中找到: from=${from} to=${to}，回退全程高亮`);
-                return null;
+
+            if (from && to) {
+                const fromIndex = findStationIndex(trainData.stations, from);
+                const toIndex = findStationIndex(trainData.stations, to);
+                if (fromIndex !== -1 && toIndex !== -1 && fromIndex !== toIndex) {
+                    return {
+                        from: trainData.stations[fromIndex].stationName,
+                        to: trainData.stations[toIndex].stationName,
+                        fromIndex,
+                        toIndex,
+                        source: 'url'
+                    };
+                }
+                console.warn(`购票段起终点未在车次站点中找到: from=${from} to=${to}，回退车次名称推导`);
             }
-            return { from, to, fromIndex, toIndex };
+
+            const derived = deriveSegmentFromTrainName(trainData);
+            if (derived) return derived;
+            if (from || to) console.warn('购票段无法解析，回退全程高亮');
+            return null;
         }
 
         /**
@@ -1124,6 +1207,20 @@ Version
         }
 
         /**
+         * 【8.2.1】显示普通提示（蓝色，不表示失败）
+         * @param {string} message - 提示内容
+         * @description 用于「同名车次多条、已按最近日期显示」这类信息性提示，
+         *              与红色 showError 区分，避免把正常降级显示成故障
+         */
+        function showNotice(message) {
+            const noticeDiv = document.createElement('div');
+            noticeDiv.className = 'notice-message';
+            noticeDiv.textContent = message;
+            document.body.appendChild(noticeDiv);
+            setTimeout(() => noticeDiv.remove(), 8000);
+        }
+
+        /**
          * 【8.3】隐藏加载动画
          * @description 隐藏页面加载时的遮罩层和加载动画
          */
@@ -1154,12 +1251,55 @@ Version
         // ============================================================
         
         /**
+         * 【2.0.1】本地日期戳 YYYYMMDD（模糊匹配用，不用 UTC 以免跨时区错一天）
+         */
+        function todayStamp() {
+            const d = new Date();
+            const p = n => String(n).padStart(2, '0');
+            return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}`;
+        }
+
+        /**
+         * 【2.0.2】把 YYYYMMDD 键转成与今天的天数差（绝对值）
+         */
+        function daysFromToday(stamp) {
+            const y = Number(stamp.slice(0, 4)), m = Number(stamp.slice(4, 6)), d = Number(stamp.slice(6, 8));
+            const target = new Date(y, m - 1, d);
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            return Math.abs(Math.round((target - today) / 86400000));
+        }
+
+        /**
+         * 【2.0.3】模糊匹配车次 key
+         * @param {string} trainKey - 不含日期前缀的车次号（如 G1948）
+         * @returns {object|null} { key, candidates }
+         * @description 同号多日期时优先「今天」，否则取离今天最近的一条；
+         *              原来是「日期最大优先」，会静默显示另一天的同号车（错站/错段来源）
+         */
+        function pickMatchingTrainKey(trainKey) {
+            const candidates = Object.keys(TRAIN_DATA)
+                .filter(key => key.endsWith(`-${trainKey}`))
+                .sort((a, b) => b.split('-')[0].localeCompare(a.split('-')[0]));
+            if (candidates.length === 0) return null;
+            const exactToday = candidates.find(key => key.startsWith(todayStamp()));
+            if (exactToday) return { key: exactToday, candidates };
+            const nearest = candidates.slice().sort((a, b) => {
+                const da = daysFromToday(a.split('-')[0]);
+                const db = daysFromToday(b.split('-')[0]);
+                if (da !== db) return da - db;
+                return b.localeCompare(a);   // 等距时取较晚的一天
+            })[0];
+            return { key: nearest, candidates };
+        }
+
+        /**
          * 【2.1】加载车次数据
          * @returns {object|array} 单个车次数据对象或车次数据数组
          * @description 
          *   - 从 URL 参数获取车次编号 (?no=车次编号)
          *   - 支持多车次同时加载 (?no=车次1,车次2)
-         *   - 支持模糊匹配（不带日期前缀）
+         *   - 支持模糊匹配（不带日期前缀；同号多日期取「今天/最近」，并提示可用精确 key）
          *   - 未指定车次时返回默认 G80 数据
          * @example
          *   loadTrainData() // 根据URL参数加载车次数据
@@ -1173,72 +1313,43 @@ Version
             }
             
             const trainKeys = noParam.split(',').map(key => key.replace(/\.(json|js)$/, ''));
-            
-            if (trainKeys.length === 1) {
-                const trainKey = trainKeys[0];
-                
-                if (TRAIN_DATA[trainKey]) {
-                    console.log('加载成功:', trainKey, TRAIN_DATA[trainKey].train_name);
-                    return TRAIN_DATA[trainKey];
+            const datePattern = /^\d{8}-/;
+
+            /**
+             * 【2.1.1】解析单个 key（精确命中 → 模糊匹配），命中多条时提示
+             */
+            const resolveKey = (rawKey) => {
+                if (TRAIN_DATA[rawKey]) {
+                    console.log('加载成功:', rawKey, TRAIN_DATA[rawKey].train_name);
+                    return TRAIN_DATA[rawKey];
                 }
-                
-                const datePattern = /^\d{8}-/;
-                if (!datePattern.test(trainKey)) {
-                    const matchingKeys = Object.keys(TRAIN_DATA)
-                        .filter(key => key.endsWith(`-${trainKey}`))
-                        .sort((a, b) => {
-                            const dateA = a.split('-')[0];
-                            const dateB = b.split('-')[0];
-                            return dateB.localeCompare(dateA);
-                        });
-                    
-                    if (matchingKeys.length > 0) {
-                        const latestKey = matchingKeys[0];
-                        console.log(`模糊匹配: ${trainKey} -> ${latestKey}`, TRAIN_DATA[latestKey].train_name);
-                        return TRAIN_DATA[latestKey];
+                if (!datePattern.test(rawKey)) {
+                    const matched = pickMatchingTrainKey(rawKey);
+                    if (matched) {
+                        console.log(`模糊匹配: ${rawKey} -> ${matched.key}`, TRAIN_DATA[matched.key].train_name);
+                        if (matched.candidates.length > 1) {
+                            showNotice(`同名车次 ${matched.candidates.length} 条，已显示 ${matched.key}；指定日期用 ?no=${matched.key}`);
+                        }
+                        return TRAIN_DATA[matched.key];
                     }
                 }
-                
-                console.error('未找到车次数据:', trainKey);
-                showError(`未找到车次数据: ${trainKey}，使用默认G80数据`);
+                console.error('未找到车次数据:', rawKey);
+                return null;
+            };
+
+            if (trainKeys.length === 1) {
+                const dataset = resolveKey(trainKeys[0]);
+                if (dataset) return dataset;
+                showError(`未找到车次数据: ${trainKeys[0]}，使用默认G80数据`);
                 return DEFAULT_TRAIN_DATA;
-            } else {
-                const trainDataList = trainKeys
-                    .map(key => {
-                        if (TRAIN_DATA[key]) {
-                            console.log('加载成功:', key, TRAIN_DATA[key].train_name);
-                            return TRAIN_DATA[key];
-                        }
-                        
-                        const datePattern = /^\d{8}-/;
-                        if (!datePattern.test(key)) {
-                            const matchingKeys = Object.keys(TRAIN_DATA)
-                                .filter(k => k.endsWith(`-${key}`))
-                                .sort((a, b) => {
-                                    const dateA = a.split('-')[0];
-                                    const dateB = b.split('-')[0];
-                                    return dateB.localeCompare(dateA);
-                                });
-                            
-                            if (matchingKeys.length > 0) {
-                                const latestKey = matchingKeys[0];
-                                console.log(`模糊匹配: ${key} -> ${latestKey}`, TRAIN_DATA[latestKey].train_name);
-                                return TRAIN_DATA[latestKey];
-                            }
-                        }
-                        
-                        console.error('未找到车次数据:', key);
-                        return null;
-                    })
-                    .filter(data => data !== null);
-                
-                if (trainDataList.length === 0) {
-                    showError('未找到任何有效的车次数据，使用默认G80数据');
-                    return DEFAULT_TRAIN_DATA;
-                }
-                
-                return trainDataList;
             }
+
+            const trainDataList = trainKeys.map(resolveKey).filter(data => data !== null);
+            if (trainDataList.length === 0) {
+                showError('未找到任何有效的车次数据，使用默认G80数据');
+                return DEFAULT_TRAIN_DATA;
+            }
+            return trainDataList;
         }
 
         /**
@@ -1299,8 +1410,6 @@ Version
             const lng = coords[1];
             const kmRadius = coords[2];
             
-            const stationNumber = station.stationNo ? Number(station.stationNo) || index + 1 : index + 1;
-            
             const isStart = index === 0;
             const isEnd = index === totalStations - 1;
 
@@ -1337,10 +1446,9 @@ Version
             
             const labelIcon = L.divIcon({
                 className: labelClass,
-                html: '<span class="city-order">' + stationNumber + '</span>'
-                    + '<span class="city-name">' + station.stationName + '</span>',
-                iconSize: [100, 34],
-                iconAnchor: [50, -14]
+                html: '<span class="city-name">' + station.stationName + '</span>',
+                iconSize: [100, 16],
+                iconAnchor: [50, -17]
             });
             
             const labelMarker = L.marker([lat, lng], {
@@ -1389,12 +1497,13 @@ Version
                 });
                 marker = L.marker([lat, lng], { icon: pinIcon, zIndexOffset: 1000 }).addTo(map);
             } else {
-                // v1.10: 默认 pin（25×41）改为 18px 圆点，整体视觉约为原来的 2/3
+                // v2.0.4: 序号并入圆点（图标与序号同一中心），18px 放不下两位数字 ⇒ 22px
+                const stationNumber = station.stationNo ? Number(station.stationNo) || index + 1 : index + 1;
                 const dotIcon = L.divIcon({
                     className: dimmed ? 'station-marker-mid station-marker-dimmed' : 'station-marker-mid',
-                    html: '',
-                    iconSize: [18, 18],
-                    iconAnchor: [9, 9]
+                    html: `<span class="station-order">${stationNumber}</span>`,
+                    iconSize: [22, 22],
+                    iconAnchor: [11, 11]
                 });
                 marker = L.marker([lat, lng], { icon: dotIcon }).addTo(map);
             }
@@ -1525,9 +1634,66 @@ Version
         }
 
         // ============================================================
-        // 【4】清除地图元素
+        // 【4】站名碰撞消解（相近城市的节点/序号/站名不再互相压）
         // ============================================================
-        
+
+        /** zoom 低于该值时只保留圆点内序号，隐藏站名（相邻小站站名必压） */
+        const HIDE_CITY_NAME_BELOW_ZOOM = 7;
+
+        /**
+         * 【4.4.1】站名碰撞消解
+         * @description 站名逐行贪心下移：与已放置的站名矩形相交就往下挪一行（行高+2px），
+         *              位移施加在 `.city-name` 内层 span 上（不碰 Leaflet 控制的 marker transform）。
+         *              顺序按视口 top 升序，保证靠上的站名优先占位。
+         */
+        function layoutCityNames() {
+            const host = document.getElementById('map');
+            if (!host || host.classList.contains('hide-city-labels') || host.classList.contains('hide-city-names')) return;
+
+            const nameEls = Array.from(document.querySelectorAll('.city-label .city-name'));
+            nameEls.forEach(el => { el.style.transform = ''; });
+            if (nameEls.length < 2) return;
+
+            const placed = [];
+            // 圆点先占位：站名除了互不压，也不能压到邻近站点的圆点/序号
+            Array.from(document.querySelectorAll('.station-marker-mid, .station-marker-from, .station-marker-to'))
+                .forEach(el => {
+                    const r = el.getBoundingClientRect();
+                    if (r.width > 0 && r.height > 0) placed.push({ left: r.left, top: r.top, width: r.width, height: r.height });
+                });
+            const items = nameEls.map(el => ({ el, rect: el.getBoundingClientRect() }))
+                .filter(item => item.rect.width > 0 && item.rect.height > 0)
+                .sort((a, b) => (a.rect.top - b.rect.top) || (a.rect.left - b.rect.left));
+
+            items.forEach(item => {
+                const w = item.rect.width, h = item.rect.height;
+                const left = item.rect.left;
+                let top = item.rect.top;
+                let dy = 0;
+                let guard = 0;
+                const hits = () => placed.some(p =>
+                    left < p.left + p.width && left + w > p.left &&
+                    top < p.top + p.height && top + h > p.top);
+                while (guard++ < 40 && hits()) {
+                    top += h + 2;
+                    dy += h + 2;
+                }
+                if (dy) item.el.style.transform = `translateY(${dy}px)`;
+                placed.push({ left, top, width: w, height: h });
+            });
+        }
+
+        /**
+         * 【4.4.2】按缩放级别同步站名显隐并重排碰撞
+         * @description zoom < HIDE_CITY_NAME_BELOW_ZOOM 时只留圆点内序号（该级别相邻小站站名必重叠）
+         */
+        function syncCityNameVisibility() {
+            const host = document.getElementById('map');
+            if (!host || !map) return;
+            host.classList.toggle('hide-city-names', map.getZoom() < HIDE_CITY_NAME_BELOW_ZOOM);
+            layoutCityNames();
+        }
+
         /**
          * 【4.5】清除地图元素
          * @description 清除地图上的所有城市高亮、标签、站点标记和路线
@@ -1597,6 +1763,8 @@ Version
                 padding: paddingValue,
                 maxZoom: 12
             });
+
+            syncCityNameVisibility();
         }
         
         // ============================================================
@@ -1665,6 +1833,8 @@ Version
                     maxZoom: 12
                 });
             }
+
+            syncCityNameVisibility();
         }
         
         // ============================================================
@@ -1979,6 +2149,10 @@ Version
             );
             
             tileLayer.addTo(map);
+
+            // v2.0.4: 站名按缩放级别显隐 + 每次视野/缩放变化后重排碰撞
+            map.on('zoomend', syncCityNameVisibility);
+            map.on('moveend', layoutCityNames);
         }
 
         // ============================================================
@@ -2260,6 +2434,6 @@ Version
          */
         document.addEventListener('DOMContentLoaded', main);
     </script>
-<!-- build: train-map @ script-miner 134df20f 2026-11-16 10:02 -->
+<!-- build: train-map @ script-miner 134df20f 2026-11-16 10:21 -->
 </body>
 </html>
