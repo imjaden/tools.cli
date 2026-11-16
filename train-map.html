@@ -26,6 +26,11 @@ Sublime Text
 - Command + k, Command + j 展示所有函数代码
 
 Version
+- v2.0.6@2026/11/16
+  1. 购票段面板新增「收起」按钮（拷贝按钮左侧，fa-chevron-up）：整块收成 30px 红色小球（🎫 + 悬停显示「车次 · 区间」），点击小球/回车还原 ⇒ 面板遮挡路线时一键让开
+  2. 折叠状态存模块级 Set（键 <YYYYMMDD>-<车次>），切车次/勾选显隐后重渲染不丢失；本页会话保留、刷新复位、不写 localStorage；多车次每块独立折叠
+  3. 面板标题「🎫 购票段」改为车次号（如 G1948），meta 行去掉重复车次号 → 「日期 · 共 N 站」；aria-label 补「购票段 + 车次号」
+  4. 导出 PNG 同时排除「收起 / 拷贝」两个控件按钮（收起态小球保留，所见即所得）
 - v2.0.5@2026/11/16
   1. 购票段面板补「发车/到站/历时」（时间差口径，跨天 +24h；哨兵值自动省略）与「座位/检票口」（UnSet/pending 省略）
   2. 面板右上角新增拷贝按钮：把购票段整理成 Markdown 一行段写入剪贴板（精简 6 行，含线上行程链接）
@@ -704,7 +709,7 @@ Version
             background: rgba(255,255,255,0.95);
             border-left: 4px solid #e74c3c;
             border-radius: 4px;
-            padding: 8px 34px 8px 12px;   /* 右侧留出拷贝按钮位 */
+            padding: 8px 66px 8px 12px;   /* 右侧留出「折叠 + 拷贝」两个按钮位 */
             font-size: 13px;
             box-shadow: 0 1px 6px rgba(0,0,0,0.2);
             pointer-events: auto;
@@ -714,10 +719,15 @@ Version
         .purchased-badge .pb-time { margin-top: 2px; color: #2c3e50; }
         .purchased-badge .pb-meta { margin-top: 2px; color: #888; font-size: 12px; }
         .purchased-badge .pb-seat { margin-top: 2px; color: #8e44ad; font-size: 12px; }
-        .purchased-badge .pb-copy {
+        /* 右上角按钮组：折叠 + 拷贝 */
+        .purchased-badge .pb-actions {
             position: absolute;
             top: 6px;
             right: 6px;
+            display: flex;
+            gap: 4px;
+        }
+        .purchased-badge .pb-actions button {
             width: 24px;
             height: 24px;
             padding: 0;
@@ -730,12 +740,37 @@ Version
             cursor: pointer;
             transition: all .15s ease;
         }
-        .purchased-badge .pb-copy:hover,
-        .purchased-badge .pb-copy:focus-visible { color: #2980b9; border-color: #2980b9; outline: none; }
+        .purchased-badge .pb-actions button:hover,
+        .purchased-badge .pb-actions button:focus-visible { color: #2980b9; border-color: #2980b9; outline: none; }
         .purchased-badge .pb-copy.is-done { color: #27ae60; border-color: #27ae60; }
+        /* 折叠态：整块收成红色小球，只留 🎫（点击小球展开） */
+        .purchased-badge.is-collapsed {
+            width: 30px;
+            height: 30px;
+            padding: 0;
+            border-left: none;
+            border-radius: 50%;
+            background: #e74c3c;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0,0,0,.28);
+            transition: transform .15s ease, background .15s ease;
+        }
+        .purchased-badge.is-collapsed:hover { background: #c0392b; transform: scale(1.06); }
+        .purchased-badge.is-collapsed > .pb-title { color: #fff; font-size: 0; line-height: 1; margin: 0; }
+        .purchased-badge.is-collapsed > .pb-title::after { content: '🎫'; font-size: 15px; }
+        .purchased-badge.is-collapsed > .pb-route,
+        .purchased-badge.is-collapsed > .pb-time,
+        .purchased-badge.is-collapsed > .pb-meta,
+        .purchased-badge.is-collapsed > .pb-seat,
+        .purchased-badge.is-collapsed > .pb-actions { display: none; }
         @media (max-width: 768px) {
-            .purchased-badge .pb-copy { width: 36px; height: 36px; font-size: 15px; top: 4px; right: 4px; }
-            .purchased-badge { padding-right: 46px; }
+            .purchased-badge .pb-actions { top: 4px; right: 4px; gap: 6px; }
+            .purchased-badge .pb-actions button { width: 36px; height: 36px; font-size: 15px; }
+            .purchased-badge { padding-right: 88px; }
+            .purchased-badge.is-collapsed { width: 40px; height: 40px; padding: 0; }
         }
 
         #map-legend {
@@ -1202,7 +1237,7 @@ Version
             const opts = {
                 useCORS: true,
                 // v2.0.5: 拷贝按钮不进导出图（截图是分享物，图标无意义）
-                ignoreElements: (el) => !!(el.classList && el.classList.contains('pb-copy')),
+                ignoreElements: (el) => !!(el.classList && (el.classList.contains('pb-copy') || el.classList.contains('pb-collapse'))),
                 scale: 2,
                 backgroundColor: '#ffffff',
                 logging: false,
@@ -2147,7 +2182,67 @@ Version
         }
 
         /**
-         * 【5.4】渲染购票段徽标（左上角，多车次时每趟一块、各带拷贝按钮）
+         * 【4.2.x】购票段面板折叠状态
+         * 为什么存模块级 Set 而不是 DOM class：renderPurchasedBadges() 每次渲染都重建 DOM
+         * （clearMapElements() 整块 remove），只放 class 会在切车次/勾选显隐后丢失。
+         * 生命周期：本页会话内保留（刷新复位）；不落 localStorage —— 这页是分享/截图工具，
+         * 跨会话记住收起态反而让人以为「面板丢了」。
+         */
+        const collapsedBadgeKeys = new Set();
+
+        function badgeKeyOf(trainData) {
+            if (!trainData) return '';
+            return `${String(trainData.depart_date || '').replace(/-/g, '')}-${trainData.train_no || ''}`;
+        }
+
+        function formatBadgeTitle(trainData) {
+            const no = trainData && trainData.train_no ? String(trainData.train_no).trim() : '';
+            return no || '购票段';
+        }
+
+        function isBadgeCollapsed(keys, key) {
+            if (!keys || !key) return false;
+            if (typeof keys.has === 'function') return keys.has(key);
+            return Array.isArray(keys) ? keys.indexOf(key) !== -1 : false;
+        }
+
+        /** 折叠/展开一块徽标（纯 UI 状态，不动数据） */
+        function applyBadgeCollapse(badge, collapsed, trainData, segment) {
+            if (!badge || !badge.classList) return;
+            const key = badgeKeyOf(trainData);
+            const title = formatBadgeTitle(trainData);
+            const route = segment ? `${segment.from} → ${segment.to}` : '';
+
+            badge.classList.toggle('is-collapsed', !!collapsed);
+            const collapseBtn = badge.querySelector('.pb-collapse');
+            if (collapseBtn) {
+                collapseBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+                collapseBtn.title = collapsed ? '展开面板' : '收起面板（避免遮挡路线）';
+            }
+
+            if (collapsed) {
+                badge.setAttribute('role', 'button');
+                badge.setAttribute('tabindex', '0');
+                badge.setAttribute('aria-label', `展开购票段面板（${title}${route ? ' · ' + route : ''}）`);
+                badge.title = [title, route].filter(Boolean).join(' · ');
+            } else {
+                badge.removeAttribute('role');
+                badge.removeAttribute('tabindex');
+                badge.setAttribute('aria-label', `购票段 ${title}`);
+                badge.title = '';
+            }
+            if (key && !collapsed) collapsedBadgeKeys.delete(key);
+        }
+
+        function toggleBadgeCollapse(badge, trainData, segment) {
+            const key = badgeKeyOf(trainData);
+            const collapsed = !badge.classList.contains('is-collapsed');
+            if (collapsed && key) collapsedBadgeKeys.add(key);
+            applyBadgeCollapse(badge, collapsed, trainData, segment);
+        }
+
+        /**
+         * 【5.4】渲染购票段徽标（左上角，多车次时每趟一块、各带「折叠 + 拷贝」按钮）
          * @param {array} entries - [{ segment, trainData }, ...]，segment 为空的项跳过
          */
         function renderPurchasedBadges(entries) {
@@ -2180,22 +2275,51 @@ Version
                 badge.className = 'purchased-badge';
                 if (seq === 0) badge.id = 'purchased-badge';   // 兼容只取首个徽标的既有脚本
                 badge.innerHTML = `
-                    <button class="pb-copy" type="button" title="复制购票段信息（Markdown）" aria-label="复制购票段信息"><i class="fas fa-copy"></i></button>
-                    <div class="pb-title">🎫 购票段</div>
+                    <div class="pb-actions">
+                        <button class="pb-collapse" type="button" title="收起面板（避免遮挡路线）" aria-label="收起购票段面板" aria-expanded="true"><i class="fas fa-chevron-up"></i></button>
+                        <button class="pb-copy" type="button" title="复制购票段信息（Markdown）" aria-label="复制购票段信息"><i class="fas fa-copy"></i></button>
+                    </div>
+                    <div class="pb-title">${formatBadgeTitle(trainData)}</div>
                     <div class="pb-route">${segment.from} → ${segment.to}</div>
                     ${timeBits.length ? `<div class="pb-time">${timeBits.join(' · ')}</div>` : ''}
-                    <div class="pb-meta">${trainData.train_no}次 · ${trainData.depart_date} · 共 ${segStations.length} 站</div>
+                    <div class="pb-meta">${trainData.depart_date} · 共 ${segStations.length} 站</div>
                     ${seatBits.length ? `<div class="pb-seat">${seatBits.join(' · ')}</div>` : ''}
                 `;
 
+                L.DomEvent.disableClickPropagation(badge);
                 const btn = badge.querySelector('.pb-copy');
                 if (btn) {
-                    L.DomEvent.disableClickPropagation(badge);
                     btn.addEventListener('click', (e) => {
                         e.stopPropagation();
                         copySegmentInfo(btn, segment, trainData);
                     });
                 }
+
+                const collapseBtn = badge.querySelector('.pb-collapse');
+                if (collapseBtn) {
+                    collapseBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        toggleBadgeCollapse(badge, trainData, segment);
+                    });
+                }
+
+                // 折叠态整块就是「展开」按钮（键盘 Enter/Space 同样可用）
+                badge.addEventListener('click', (e) => {
+                    if (!badge.classList.contains('is-collapsed')) return;
+                    e.stopPropagation();
+                    toggleBadgeCollapse(badge, trainData, segment);
+                });
+                badge.addEventListener('keydown', (e) => {
+                    if (!badge.classList.contains('is-collapsed')) return;
+                    if (e.key !== 'Enter' && e.key !== ' ') return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggleBadgeCollapse(badge, trainData, segment);
+                });
+
+                // 按模块级状态复原折叠态（切车次/勾选显隐后重渲染也不丢）
+                applyBadgeCollapse(badge, isBadgeCollapsed(collapsedBadgeKeys, badgeKeyOf(trainData)), trainData, segment);
+
                 container.appendChild(badge);
                 seq += 1;
             });
@@ -2710,6 +2834,6 @@ Version
          */
         document.addEventListener('DOMContentLoaded', main);
     </script>
-<!-- build: train-map @ script-miner 22fa7198 2026-11-16 11:25 -->
+<!-- build: train-map @ script-miner c947016c 2026-11-16 12:31 -->
 </body>
 </html>
