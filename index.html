@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>工具集 · tools.cli.jaden.tech</title>
 <link rel="canonical" href="https://tools.cli.jaden.tech/">
+<link rel="icon" href="/favicon.png">
 <style>
   :root { --cobalt-400:#818cf8; --cobalt-500:#6366f1; --cobalt-600:#4f46e5; --cobalt-700:#4338ca;
           --surface-900:#11111b; --surface-950:#0a0a14; --radius-sm:4px; --radius-md:6px; --radius-lg:8px; }
@@ -27,7 +28,7 @@
          box-shadow:0 0 0 2px rgba(79,70,229,.2); }
   .input-dark::placeholder { color:#555; }
   .table-wrap { border:1px solid #1a1a2e; border-radius:var(--radius-lg); overflow:auto; }
-  .data-table { width:100%; border-collapse:collapse; table-layout:fixed; }
+  .data-table { width:100%; border-collapse:collapse; font-size:.82rem; table-layout:fixed; }
   .data-table th { position:sticky; top:0; z-index:10; background:var(--surface-900);
          border-bottom:1px solid #2a2a3e; padding:8px 10px; text-align:left; font-size:.7rem;
          font-weight:600; color:#9ca3af; text-transform:uppercase; letter-spacing:.05em;
@@ -37,8 +38,15 @@
   .data-table th.sort-asc::after { content:' ▴'; color:var(--cobalt-400); }
   .data-table th.sort-desc::after { content:' ▾'; color:var(--cobalt-400); }
   .data-table td { padding:8px 10px; border-bottom:1px solid #1a1a2e; font-size:.8rem;
-         vertical-align:middle; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+         vertical-align:middle; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:0; }
   .data-table td.wrap { white-space:normal; }
+  .cell-stack { display:flex; flex-direction:column; gap:1px; min-width:0; }
+  .cell-sub { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:.68rem; color:#6b7280;
+         overflow:hidden; text-overflow:ellipsis; }
+  .vis { display:inline-block; font-size:.7rem; padding:1px 7px; border-radius:9999px; border:1px solid transparent; }
+  .vis-public { color:#4ade80; border-color:rgba(74,222,128,.35); }
+  .vis-masked { color:#fbbf24; border-color:rgba(251,191,36,.35); }
+  .vis-private { color:#9ca3af; border-color:rgba(156,163,175,.35); }
   .data-table tbody tr:hover { background:rgba(79,70,229,.08); }
   .muted { color:#6b7280; }
   .badge { display:inline-block; padding:1px 8px; border-radius:9999px; font-size:.7rem; }
@@ -54,9 +62,45 @@
   .btn-ghost:hover { color:#e0e0e0; border-color:#555; }
   .btn-ghost:disabled { opacity:.45; cursor:default; }
   .btn-sm { padding:3px 10px; font-size:.72rem; }
-  .footer { margin-top:24px; font-size:.75rem; color:#6b7280; }
+  .footer { margin-top:24px; font-size:.75rem; color:#6b7280; text-align:center; }
+  .footer-line { margin:2px 0; }
   .footer code { font-family:ui-monospace, SFMono-Regular, Menlo, monospace;
          background:rgba(255,255,255,.06); padding:1px 5px; border-radius:var(--radius-sm); }
+  /* ── 分栏详情（本地导航） ── */
+  .split { display:grid; grid-template-columns:1fr; gap:16px; align-items:start; }
+  .split[data-mode="detail"] { grid-template-columns:minmax(220px, 24%) 1fr; }
+  @media (max-width:1023px) { .split[data-mode="detail"] { grid-template-columns:1fr; } }
+  .detail-pane { display:none; border:1px solid #1a1a2e; border-radius:var(--radius-lg);
+         padding:16px 18px; background:#0d0d1a; position:sticky; top:16px;
+         max-height:calc(100vh - 32px); overflow:auto; }
+  .split[data-mode="detail"] .detail-pane { display:block; }
+  .detail-head { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
+  .detail-head h2 { font-size:.98rem; color:#f0f0f0; margin:0; font-weight:700; }
+  .detail-actions { margin-left:auto; display:flex; gap:6px; }
+  .icon-btn { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px;
+         border-radius:var(--radius-md); border:1px solid #2a2a3e; background:#0f0f1a;
+         color:#9ca3af; text-decoration:none; font-size:.9rem; line-height:1; }
+  .icon-btn:hover { color:#e0e0e0; border-color:#555; }
+  .detail-close { border:1px solid #2a2a3e; background:transparent; color:#9ca3af; cursor:pointer;
+         border-radius:var(--radius-md); padding:3px 10px; font-size:.74rem; font-family:inherit; }
+  .detail-close:hover { color:#e0e0e0; border-color:#555; }
+  .detail-block { margin-top:14px; }
+  .detail-block h3 { font-size:.7rem; text-transform:uppercase; letter-spacing:.06em; color:#6b7280;
+         margin-bottom:6px; font-weight:600; }
+  .detail-block p { font-size:.82rem; color:#d0d0d0; }
+  .detail-block code, .detail-foot code { font-family:ui-monospace, Menlo, monospace;
+         background:rgba(255,255,255,.06); padding:1px 5px; border-radius:var(--radius-sm); font-size:.74rem; }
+  .link-list { list-style:none; display:flex; flex-direction:column; gap:7px; }
+  .link-list li { font-size:.79rem; color:#d0d0d0; }
+  .link-list .tag { font-size:.64rem; color:#9ca3af; border:1px solid #2a2a3e;
+         border-radius:9999px; padding:1px 6px; margin-right:6px; white-space:nowrap; }
+  .link-list .sub { color:#6b7280; font-size:.72rem; display:block; margin-top:2px; }
+  .td-title { cursor:pointer; }
+  .data-table tbody tr.active { background:rgba(79,70,229,.18); }
+  .data-table td.ops-cell { white-space:nowrap; overflow:visible; }
+  .data-table td.ops-cell a { margin-right:4px; }
+  .ops-hover { visibility:hidden; }
+  .data-table tbody tr:hover .ops-hover { visibility:visible; }
 </style>
 </head>
 <body>
@@ -70,6 +114,7 @@
     <div class="flex-1"></div>
     <span class="stat-label" id="statInfo"></span>
   </div>
+  
   <div class="table-wrap">
     <table class="data-table">
       <thead id="thead"></thead>
@@ -78,8 +123,11 @@
     <div class="empty-state" id="emptyState" style="display:none">📭 无匹配数据</div>
   </div>
   <div class="pager" id="pager"></div>
+  
   <div class="footer">页面 slug 即规范址（一级扁平，<code>/{slug}.html</code>）· 旧地址走别名桩 302 到规范址 · 构建水印见页面源码末尾注释</div>
 </div>
+
+
 <script>
 var COLUMNS = [{"key": "title", "label": "页名", "width": "22%", "link": "url"}, {"key": "group", "label": "分组", "width": "10%"}, {"key": "class", "label": "形态", "width": "8%", "cls": "badge badge-blue"}, {"key": "visibility", "label": "可见性", "width": "10%"}, {"key": "aliases", "label": "别名", "width": "16%", "cls": "muted"}, {"key": "description", "label": "说明", "width": "34%", "wrap": true}];
 var DATA = [{"slug": "train-map", "title": "高铁线路图", "group": "出行", "class": "D", "visibility": "masked", "aliases": "/12306.html", "description": "高铁车次全程线路图：途经站点、购票区间高亮、时刻表与座位信息，数据来自 Supabase 只读表。", "url": "/train-map.html"}, {"slug": "pmp-itto", "title": "PMP ITTO 知识图谱", "group": "学习", "class": "B", "visibility": "public", "aliases": "/pmp.html", "description": "PMP 十大知识领域 × 五大过程组 × 49 子过程的 ITTO 关系图谱，备考速查。", "url": "/pmp-itto.html"}, {"slug": "english-translator", "title": "英语句型翻译助手", "group": "学习", "class": "A", "visibility": "public", "aliases": "/translater.html", "description": "英语句型与时态转换对照工具，覆盖常见语法的正误示例。", "url": "/english-translator.html"}, {"slug": "brand-colors", "title": "品牌配色体系", "group": "设计", "class": "A", "visibility": "public", "aliases": "/palette.html", "description": "品牌色板与配色组合速查，含色值、对比度与使用场景建议。", "url": "/brand-colors.html"}, {"slug": "moments-cover", "title": "朋友圈封面生成器", "group": "设计", "class": "A", "visibility": "public", "aliases": "/cover.html", "description": "生成微信朋友圈封面图（1080×1800），可导出为 PNG 直接使用。", "url": "/moments-cover.html"}, {"slug": "daily-poetry", "title": "每日诗歌", "group": "生活", "class": "B", "visibility": "public", "aliases": "/poetry.html", "description": "每日一首诗：原文、注释与赏析，随构建快照发布。", "url": "/daily-poetry.html"}, {"slug": "git-cloner", "title": "Git 仓库克隆器", "group": "开发", "class": "D", "visibility": "public", "aliases": "/cloner.html", "description": "本地仓库克隆台账：列表、筛选、统计与 AI 摘要入口，支持 ?range=all 全量视图。", "url": "/git-cloner.html"}, {"slug": "web2md", "title": "微信文章转 Markdown", "group": "开发", "class": "D", "visibility": "public", "aliases": "—", "description": "微信文章转 Markdown 的本地台账：已处理清单、标签与关联计数、分栏原文预览。", "url": "/web2md.html"}, {"slug": "lock-screen", "title": "锁屏小组件示例", "group": "系统", "class": "C", "visibility": "public", "aliases": "/lockscreen.html", "description": "iOS 锁屏小组件（Scriptable）效果示例：时钟、天气与今日诗歌同屏演示。", "url": "/lock-screen.html"}];
@@ -88,26 +136,241 @@ var GROUPS = ["出行", "学习", "设计", "生活", "开发", "系统"];
 (function () {
   var PAGE_SIZE = 30;
   var filtered = DATA.slice(), page = 1, sortKey = 'group', sortAsc = true;
+  var COMPACT = (typeof COLUMNS_COMPACT !== 'undefined') ? COLUMNS_COMPACT : null;
+  var DETAILS = (typeof DETAIL_DATA !== 'undefined') ? DETAIL_DATA : null;
+  var MODE = 'browse', ACTIVE = '';
+
+  function activeCols() { return (MODE === 'detail' && COMPACT) ? COMPACT : COLUMNS; }
+
+  function iconBtn(symbol, href, title) {
+    var a = document.createElement('a');
+    a.className = 'icon-btn';
+    a.href = href;
+    a.title = title;
+    a.setAttribute('aria-label', title);
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.textContent = symbol;
+    return a;
+  }
 
   function cell(row, col) {
-    var raw = row[col.key];
-    var val = (raw === undefined || raw === null) ? '' : String(raw);
     var td = document.createElement('td');
     if (col.wrap) td.className = 'wrap';
+    if (col.ops) {
+      td.className = 'ops-cell';
+      if (row.kind === 'cli') {                     /* 工具无页面：只给「复制命令」 */
+        var cp = kit('button', 'icon-btn', '⧉');
+        cp.title = '复制命令 ' + (row.command || '');
+        cp.onclick = function () {
+          if (navigator.clipboard) navigator.clipboard.writeText(row.command || '');
+          cp.textContent = '✓';
+          setTimeout(function () { cp.textContent = '⧉'; }, 1200);
+        };
+        td.appendChild(cp);
+        return td;
+      }
+      if (row.local) td.appendChild(iconBtn('🖥', row.local, '本地访问 ' + row.local));
+      if (row.url) td.appendChild(iconBtn('🌐', row.url, '线上访问 ' + row.url));
+      return td;
+    }
+    var raw = row[col.key];
+    var val = (raw === undefined || raw === null) ? '' : String(raw);
+    var sub = col.sub ? String(row[col.sub] || '') : '';
+    var box = td;
+    if (sub && sub !== '—') {
+      box = kit('div', 'cell-stack');
+      td.appendChild(box);
+      td.title = val + ' · ' + sub;
+    } else if (val) {
+      td.title = val;           /* 截断列 hover 可见全文 */
+    }
     if (col.link && row[col.link]) {
       var a = document.createElement('a');
       a.href = String(row[col.link]);
       a.textContent = val;
-      td.appendChild(a);
+      if (col.key === 'title' && DETAILS) {
+        a.className = 'td-title';
+        a.addEventListener('click', function (ev) {
+          if (ev.metaKey || ev.ctrlKey || ev.shiftKey) return;   /* 中键/新窗口照常打开 */
+          ev.preventDefault();
+          if (MODE === 'detail' && ACTIVE === row.slug) { collapse(); } else { selectDetail(row.slug); }
+        });
+      }
+      box.appendChild(a);
     } else if (col.cls) {
       var s = document.createElement('span');
-      s.className = col.cls;
+      s.className = (col.key === 'visibility' && val) ? 'vis vis-' + val.toLowerCase() : col.cls;
       s.textContent = val;
-      td.appendChild(s);
+      box.appendChild(s);
     } else {
-      td.textContent = val;
+      box.appendChild(document.createTextNode(val));
     }
+    if (sub && sub !== '—') box.appendChild(kit('span', 'cell-sub', sub));
     return td;
+  }
+
+  function rebuildHeader() {
+    var thead = document.getElementById('thead');
+    thead.innerHTML = '';
+    var tr = document.createElement('tr');
+    activeCols().forEach(function (col) {
+      var th = document.createElement('th');
+      th.textContent = col.label;
+      if (col.width) th.style.width = col.width;
+      if (col.sortable !== false && !col.ops) {
+        th.classList.add('sortable');
+        th.dataset.key = col.key;
+        if (col.key === sortKey) th.classList.add(sortAsc ? 'sort-asc' : 'sort-desc');
+        th.onclick = function () { sortBy(col.key); };
+      }
+      tr.appendChild(th);
+    });
+    thead.appendChild(tr);
+  }
+
+  function kit(tag, cls, text) {
+    var el = document.createElement(tag);
+    if (cls) el.className = cls;
+    if (text !== undefined && text !== null) el.textContent = String(text);
+    return el;
+  }
+
+  function block(title) {
+    var d = kit('div', 'detail-block');
+    d.appendChild(kit('h3', '', title));
+    return d;
+  }
+
+  function line(parts) {
+    var li = kit('li');
+    parts.forEach(function (p) {
+      if (p.tag) li.appendChild(kit('span', 'tag', p.tag));
+      else if (p.code) li.appendChild(kit('code', '', p.code));
+      else if (p.sub) li.appendChild(kit('span', 'sub', p.sub));
+      else if (p.link) {
+        var a = kit('a', '', p.text);
+        a.href = p.link;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        li.appendChild(a);
+      } else if (p.text !== undefined) li.appendChild(document.createTextNode(String(p.text)));
+    });
+    return li;
+  }
+
+  function renderDetail(slug) {
+    var d = DETAILS[slug];
+    var pane = document.getElementById('detailPane');
+    if (!d || !pane) return;
+    pane.innerHTML = '';
+
+    var head = kit('div', 'detail-head');
+    head.appendChild(kit('h2', '', d.title));
+    head.appendChild(kit('span', 'badge badge-blue', d.class));
+    head.appendChild(kit('span', 'badge badge-black', d.group));
+    if (d.visibility === 'private') head.appendChild(kit('span', 'badge badge-black', '私有'));
+    var actions = kit('div', 'detail-actions');
+    if (d.kind === 'cli') {
+      var cp = kit('button', 'btn btn-ghost btn-sm', '⧉ 复制命令');
+      cp.onclick = function () {
+        var t = d.command;
+        if (navigator.clipboard) navigator.clipboard.writeText(t);
+        cp.textContent = '✓ 已复制';
+        setTimeout(function () { cp.textContent = '⧉ 复制命令'; }, 1200);
+      };
+      actions.appendChild(cp);
+    } else {
+      if (d.local) actions.appendChild(iconBtn('🖥', d.local, '本地访问 ' + d.local));
+      if (d.url) actions.appendChild(iconBtn('🌐', d.url, '线上访问 ' + d.url));
+    }
+    var close = kit('button', 'detail-close', '← 列表');
+    close.onclick = collapse;
+    actions.appendChild(close);
+    head.appendChild(actions);
+    pane.appendChild(head);
+    pane.appendChild(kit('div', 'kv', d.description || ''));
+
+    var b1 = block('需求场景');
+    b1.appendChild(kit('p', '', d.scenario || '（未填写）'));
+    pane.appendChild(b1);
+
+    var b2 = block('关联工具');
+    var ul = kit('ul', 'link-list');
+    (d.web || []).forEach(function (w) {
+      ul.appendChild(line([{ tag: 'Web' }, { text: w.title + ' ' }, { link: w.local, text: w.self ? '（本页）' : w.url }]));
+    });
+    (d.cli || []).forEach(function (c) {
+      ul.appendChild(line([{ tag: 'CLI' }, { code: c.name },
+                           { text: c.aliases.length ? '（别名 ' + c.aliases.join(' / ') + '）' : '' },
+                           { sub: '脚本 ' + c.script }]));
+    });
+    (d.tm || []).forEach(function (t) {
+      ul.appendChild(line([{ tag: 'TM' }, { text: t.name }, { sub: t.path + ' · 安装：Tampermonkey → 添加新脚本，粘贴该文件内容' }]));
+    });
+    if (!ul.children.length) ul.appendChild(line([{ text: '（无关联工具）' }]));
+    b2.appendChild(ul);
+    pane.appendChild(b2);
+
+    var b3 = block('解决方案 · 源码清单');
+    var ul2 = kit('ul', 'link-list');
+    (d.sources || []).forEach(function (s) {
+      ul2.appendChild(line([{ tag: s.kind }, { code: s.path }]));
+    });
+    b3.appendChild(ul2);
+    pane.appendChild(b3);
+
+    var b4 = block('访问方式');
+    var ul3 = kit('ul', 'link-list');
+    if (d.kind === 'cli') {
+      ul3.appendChild(line([{ tag: '命令' }, { code: d.command }]));
+      if (d.script) ul3.appendChild(line([{ tag: '脚本' }, { code: d.script }]));
+      ul3.appendChild(line([{ tag: '帮助' }, { code: 'pages-manager help' },
+                            { sub: '全局命令已装：~/.local/bin/pages-manager（别名 pages / tools-cli）' }]));
+      ul3.appendChild(line([{ tag: '文档' }, { link: 'pages-manager-changelog.html', text: '变更日志' },
+                            { text: ' · ' }, { link: 'pages-manager-features.html', text: '功能清单' }]));
+    } else {
+      ul3.appendChild(line([{ tag: '本地' }, { link: d.local, text: d.local }]));
+      ul3.appendChild(line([{ tag: '线上' }, { link: d.url, text: d.url }]));
+      (d.aliases || []).forEach(function (a) {
+        ul3.appendChild(line([{ tag: '别名' }, { link: a, text: a }]));
+      });
+      ul3.appendChild(line([{ tag: '启动' }, { code: 'hs .' }, { sub: '仓库根起服务；端口以 hs list 为准（不写死，避免与当前实例漂移）' }]));
+      ul3.appendChild(line([{ tag: 'dist' }, { code: d.dist }, { sub: '预览构建产物 cache/pages-dist' }]));
+    }
+    b4.appendChild(ul3);
+    pane.appendChild(b4);
+
+    if (d.kind !== 'cli') {
+      var foot = block('站点');
+      foot.appendChild(kit('p', '', '线上站点 ' + d.site));
+      pane.appendChild(foot);
+    }
+  }
+
+  function selectDetail(slug, silent) {
+    if (!DETAILS || !DETAILS[slug]) return;
+    ACTIVE = slug;
+    MODE = 'detail';
+    var split = document.getElementById('split');
+    if (split) split.setAttribute('data-mode', 'detail');
+    rebuildHeader();
+    render();
+    renderDetail(slug);
+    if (!silent && history.replaceState) history.replaceState(null, '', '#p=' + slug);
+    var pane = document.getElementById('detailPane');
+    if (pane && window.innerWidth < 1024 && pane.scrollIntoView) pane.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function collapse() {
+    if (!DETAILS) return;
+    ACTIVE = '';
+    MODE = 'browse';
+    var split = document.getElementById('split');
+    if (split) split.setAttribute('data-mode', 'browse');
+    rebuildHeader();
+    render();
+    if (history.replaceState) history.replaceState(null, '', location.pathname + location.search);
   }
 
   function renderPager(total) {
@@ -141,7 +404,8 @@ var GROUPS = ["出行", "学习", "设计", "生活", "开发", "系统"];
     tbody.innerHTML = '';
     filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).forEach(function (row) {
       var tr = document.createElement('tr');
-      COLUMNS.forEach(function (col) { tr.appendChild(cell(row, col)); });
+      if (DETAILS && row.slug === ACTIVE) tr.className = 'active';
+      activeCols().forEach(function (col) { tr.appendChild(cell(row, col)); });
       tbody.appendChild(tr);
     });
     document.getElementById('emptyState').style.display = filtered.length ? 'none' : 'block';
@@ -189,20 +453,7 @@ var GROUPS = ["出行", "学习", "设计", "生活", "开发", "系统"];
   }
 
   function init() {
-    var tr = document.createElement('tr');
-    COLUMNS.forEach(function (col) {
-      var th = document.createElement('th');
-      th.textContent = col.label;
-      if (col.width) th.style.width = col.width;
-      if (col.sortable !== false) {
-        th.classList.add('sortable');
-        th.dataset.key = col.key;
-        if (col.key === sortKey) th.classList.add(sortAsc ? 'sort-asc' : 'sort-desc');
-        th.onclick = function () { sortBy(col.key); };
-      }
-      tr.appendChild(th);
-    });
-    document.getElementById('thead').appendChild(tr);
+    rebuildHeader();
 
     var sel = document.getElementById('groupFilter');
     if (sel) {
@@ -218,6 +469,13 @@ var GROUPS = ["出行", "学习", "设计", "生活", "开发", "系统"];
       if (e.key === 'Enter') applyFilters();
     });
     document.getElementById('searchBtn').addEventListener('click', applyFilters);
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && MODE === 'detail') collapse();
+    });
+    if (DETAILS) {
+      var m = /(?:^|[#&])p=([A-Za-z0-9_-]+)/.exec(location.hash || '');
+      if (m && DETAILS[m[1]]) selectDetail(m[1], true);
+    }
     applyFilters();
   }
 
@@ -226,6 +484,6 @@ var GROUPS = ["出行", "学习", "设计", "生活", "开发", "系统"];
 })();
 
 </script>
-<!-- build: index @ script-miner e08b4e7a 2026-11-16 15:34 -->
+<!-- build: index @ script-miner 12b557e7 2026-11-16 18:29 -->
 </body>
 </html>
