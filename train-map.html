@@ -26,6 +26,8 @@ Sublime Text
 - Command + k, Command + j 展示所有函数代码
 
 Version
+- v2.0.7@2026/11/16
+  1. 移除 G137（2026-10-17）数据：该记录票面为 08:44 天津西→上海虹桥，而抓到的时刻表是 13:55 北京朝阳→吉林（车次号重号），页面无法推导购票段；已连同 Supabase 行、本地归档、train-data.js 条目与静态兜底列表一并删除
 - v2.0.6@2026/11/16
   1. 购票段面板新增「收起」按钮（拷贝按钮左侧，fa-chevron-up）：整块收成 30px 红色小球（🎫 + 悬停显示「车次 · 区间」），点击小球/回车还原 ⇒ 面板遮挡路线时一键让开
   2. 折叠状态存模块级 Set（键 <YYYYMMDD>-<车次>），切车次/勾选显隐后重渲染不丢失；本页会话保留、刷新复位、不写 localStorage；多车次每块独立折叠
@@ -1008,7 +1010,6 @@ Version
         let TRAIN_LIST = [
     { train_no: "G1948", train_name: "上海虹桥->焦作", depart_date: "2026-11-15", depart_time: "10:16" },
     { train_no: "G1948", train_name: "上海虹桥->郑州东", depart_date: "2026-11-13", depart_time: "10:16" },
-    { train_no: "G137", train_name: "天津西->上海虹桥", depart_date: "2026-10-17", depart_time: "13:55" },
     { train_no: "G1808", train_name: "郑州东->上海虹桥", depart_date: "2026-10-12", depart_time: "10:01" },
     { train_no: "G2051", train_name: "濮阳东->郑州东", depart_date: "2026-10-08", depart_time: "07:22" },
     { train_no: "G7932", train_name: "郑州东->濮阳东", depart_date: "2026-09-30", depart_time: "10:10" },
@@ -2834,6 +2835,6 @@ Version
          */
         document.addEventListener('DOMContentLoaded', main);
     </script>
-<!-- build: train-map @ script-miner c947016c 2026-11-16 12:31 -->
+<!-- build: train-map @ script-miner 1b12d508 2026-11-16 13:12 -->
 </body>
 </html>
