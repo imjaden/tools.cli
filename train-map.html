@@ -26,6 +26,10 @@ Sublime Text
 - Command + k, Command + j 展示所有函数代码
 
 Version
+- v2.0.8@2026/11/16
+  1. 顶栏按钮重排：「切换车次」从右下控件栈搬到时刻表面板 header，与折叠箭头并排（切换车次在左，新类 .header-btn 与 header 融合，移动端 36px 热区）；点击 stopPropagation，不再连带折叠时刻表
+  2. 右下控件栈首原位改为 Home 按钮（fa-home）：点击返回门户首页 `/` —— 本地为仓根门户、线上为 tools.cli 门户
+  3. 默认车次（无 ?no=）从 G80 2026-03-19（08:00→11:43，含苏州北）更新为 20260525-G80（14:04→18:04，含开封北、无苏州北）；header 静态日期与三处回退日志同步
 - v2.0.7@2026/11/16
   1. 移除 G137（2026-10-17）数据：该记录票面为 08:44 天津西→上海虹桥，而抓到的时刻表是 13:55 北京朝阳→吉林（车次号重号），页面无法推导购票段；已连同 Supabase 行、本地归档、train-data.js 条目与静态兜底列表一并删除
 - v2.0.6@2026/11/16
@@ -545,7 +549,33 @@ Version
             font-size: 12px;
             opacity: 0.9;
         }
-        
+
+        /* 顶栏右侧按钮组：切换车次 + 折叠时刻表（两个并排，样式与 header 融合） */
+        .timetable-header-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+        .header-btn {
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            background: none;
+            border: none;
+            color: white;
+            font-size: 14px;
+            line-height: 1;
+            cursor: pointer;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+        .header-btn:hover,
+        .header-btn:focus-visible { background: rgba(255, 255, 255, 0.2); outline: none; }
+
         .timetable-toggle {
             background: none;
             border: none;
@@ -869,6 +899,8 @@ Version
                 top: 5px;
                 right: 5px;
             }
+
+            .header-btn { width: 36px; height: 36px; font-size: 16px; }
             
             .timetable-table {
                 font-size: 12px;
@@ -906,11 +938,16 @@ Version
         <div class="timetable-header" onclick="toggleTimetable()">
             <div class="timetable-header-left">
                 <span class="train-no" id="timetable-train-no">G80</span>
-                <span class="train-date" id="timetable-train-date">2026-03-19</span>
+                <span class="train-date" id="timetable-train-date">2026-05-25</span>
             </div>
-            <button class="timetable-toggle" id="timetable-toggle-btn">
-                <i class="fas fa-chevron-up"></i>
-            </button>
+            <div class="timetable-header-right">
+                <button class="header-btn" id="switch-train-btn" type="button" title="切换车次" aria-label="切换车次">
+                    <i class="fas fa-exchange-alt"></i>
+                </button>
+                <button class="timetable-toggle" id="timetable-toggle-btn" type="button" title="展开/收起时刻表" aria-label="展开或收起时刻表">
+                    <i class="fas fa-chevron-up"></i>
+                </button>
+            </div>
         </div>
         <div class="timetable-body" id="timetable-body">
             <table class="timetable-table">
@@ -996,14 +1033,14 @@ Version
         const DEFAULT_TRAIN_DATA = {
             train_no: "G80",
             train_name: "上海虹桥->郑州东",
-            depart_date: "2026-03-19",
+            depart_date: "2026-05-25",
             stations: [
-                { stationNo: "1", stationName: "上海虹桥", arrivalTime: "起始站", departureTime: "08:00", stopTime: null },
-                { stationNo: "2", stationName: "苏州北", arrivalTime: "08:22", departureTime: "08:24", stopTime: "2分钟" },
-                { stationNo: "3", stationName: "南京南", arrivalTime: "09:02", departureTime: "09:04", stopTime: "2分钟" },
-                { stationNo: "4", stationName: "徐州东", arrivalTime: "10:08", departureTime: "10:10", stopTime: "2分钟" },
-                { stationNo: "5", stationName: "商丘", arrivalTime: "10:52", departureTime: "10:54", stopTime: "2分钟" },
-                { stationNo: "6", stationName: "郑州东", arrivalTime: "11:43", departureTime: "终点站", stopTime: null }
+                { stationNo: "1", stationName: "上海虹桥", arrivalTime: "起始站", departureTime: "14:04", stopTime: null },
+                { stationNo: "2", stationName: "南京南", arrivalTime: "15:05", departureTime: "15:10", stopTime: "5分钟" },
+                { stationNo: "3", stationName: "徐州东", arrivalTime: "16:19", departureTime: "16:21", stopTime: "2分钟" },
+                { stationNo: "4", stationName: "商丘", arrivalTime: "17:05", departureTime: "17:07", stopTime: "2分钟" },
+                { stationNo: "5", stationName: "开封北", arrivalTime: "17:41", departureTime: "17:43", stopTime: "2分钟" },
+                { stationNo: "6", stationName: "郑州东", arrivalTime: "18:04", departureTime: "终点站", stopTime: null }
             ]
         };
         
@@ -1378,7 +1415,7 @@ Version
          *   - 从 URL 参数获取车次编号 (?no=车次编号)
          *   - 支持多车次同时加载 (?no=车次1,车次2)
          *   - 支持模糊匹配（不带日期前缀；同号多日期取「今天/最近」，并提示可用精确 key）
-         *   - 未指定车次时返回默认 G80 数据
+         *   - 未指定车次时返回默认 G80（2026-05-25）快照数据
          * @example
          *   loadTrainData() // 根据URL参数加载车次数据
          */
@@ -1386,7 +1423,7 @@ Version
             const noParam = getUrlParam('no');
             
             if (!noParam) {
-                console.log('未指定车次参数，使用默认G80数据');
+                console.log('未指定车次参数，使用默认 G80（2026-05-25）数据');
                 return DEFAULT_TRAIN_DATA;
             }
             
@@ -1418,13 +1455,13 @@ Version
             if (trainKeys.length === 1) {
                 const dataset = resolveKey(trainKeys[0]);
                 if (dataset) return dataset;
-                showError(`未找到车次数据: ${trainKeys[0]}，使用默认G80数据`);
+                showError(`未找到车次数据: ${trainKeys[0]}，使用默认 G80（2026-05-25）数据`);
                 return DEFAULT_TRAIN_DATA;
             }
 
             const trainDataList = trainKeys.map(resolveKey).filter(data => data !== null);
             if (trainDataList.length === 0) {
-                showError('未找到任何有效的车次数据，使用默认G80数据');
+                showError('未找到任何有效的车次数据，使用默认 G80（2026-05-25）数据');
                 return DEFAULT_TRAIN_DATA;
             }
             return trainDataList;
@@ -2443,6 +2480,24 @@ Version
             }
         }
 
+        /**
+         * 【5.4】绑定顶栏右侧按钮（切换车次）
+         * @description header 整条带 onclick="toggleTimetable()"，所以切换车次必须
+         *              stopPropagation，否则点「切换车次」会连带把时刻表折叠起来。
+         *              注意：折叠箭头本身**不能** stopPropagation —— 它靠冒泡到 header 的
+         *              onclick 才能折叠（给它加 e.stopPropagation() 会让折叠按钮失效）。
+         */
+        function bindHeaderButtons() {
+            const switchBtn = document.getElementById('switch-train-btn');
+            if (switchBtn) {
+                switchBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    showTrainListModal();
+                });
+            }
+        }
+
         // ============================================================
         // 【1】初始化地图
         // ============================================================
@@ -2472,9 +2527,11 @@ Version
             customZoomControl.onAdd = function(map) {
                 const container = L.DomUtil.create('div', 'leaflet-control-custom-zoom');
                 
-                const switchBtn = L.DomUtil.create('button', 'switch-btn', container);
-                switchBtn.innerHTML = '<i class="fas fa-exchange-alt"></i>';
-                switchBtn.title = '切换车次';
+                // 栈首：返回门户首页（原「切换车次」位置；切换车次已迁到时刻表 header 右侧）
+                const homeBtn = L.DomUtil.create('button', 'switch-btn home-btn', container);
+                homeBtn.innerHTML = '<i class="fas fa-home"></i>';
+                homeBtn.title = '返回门户首页';
+                homeBtn.setAttribute('aria-label', '返回门户首页');
                 
                 const divider = L.DomUtil.create('div', 'divider', container);
                 divider.style.cssText = 'height: 1px; background: #e9ecef; margin: 2px 0;';
@@ -2501,9 +2558,9 @@ Version
                 L.DomEvent.disableClickPropagation(container);
                 L.DomEvent.disableScrollPropagation(container);
                 
-                L.DomEvent.on(switchBtn, 'click', L.DomEvent.stopPropagation);
-                L.DomEvent.on(switchBtn, 'click', L.DomEvent.preventDefault);
-                L.DomEvent.on(switchBtn, 'click', () => showTrainListModal());
+                L.DomEvent.on(homeBtn, 'click', L.DomEvent.stopPropagation);
+                L.DomEvent.on(homeBtn, 'click', L.DomEvent.preventDefault);
+                L.DomEvent.on(homeBtn, 'click', () => { window.location.href = '/'; });
                 
                 L.DomEvent.on(zoomInBtn, 'click', L.DomEvent.stopPropagation);
                 L.DomEvent.on(zoomInBtn, 'click', L.DomEvent.preventDefault);
@@ -2807,6 +2864,7 @@ Version
         async function main() {
             try {
                 initMap();
+                bindHeaderButtons();
                 
                 const loadSuccess = await fetchTrainData();
                 if (!loadSuccess) {
@@ -2835,6 +2893,6 @@ Version
          */
         document.addEventListener('DOMContentLoaded', main);
     </script>
-<!-- build: train-map @ script-miner 1b12d508 2026-11-16 13:12 -->
+<!-- build: train-map @ script-miner e08b4e7a 2026-11-16 15:34 -->
 </body>
 </html>
