@@ -26,6 +26,11 @@ Sublime Text
 - Command + k, Command + j 展示所有函数代码
 
 Version
+- v2.0.5@2026/11/16
+  1. 购票段面板补「发车/到站/历时」（时间差口径，跨天 +24h；哨兵值自动省略）与「座位/检票口」（UnSet/pending 省略）
+  2. 面板右上角新增拷贝按钮：把购票段整理成 Markdown 一行段写入剪贴板（精简 6 行，含线上行程链接）
+  3. 剪贴板走「能力判断 → execCommand 回退 → 失败可见反馈」口径（本地 http 非安全上下文必需）
+  4. 多车次时每趟各一块徽标、各带拷贝按钮；导出 PNG 排除拷贝按钮
 - v2.0.4@2026/11/16
   1. 购票段自动推导：URL 无 from/to 时回退解析 train_name 的 A->B（站名归一，去尾缀「站」），仍失败才回退全程 ⇒ 修复「CLI 有上/下车站、页面无乘车路段」
   2. 车次模糊匹配口径改为「今天优先、否则离今天最近」，命中多条时蓝色提示可用精确 ?no=YYYYMMDD-车次
@@ -682,21 +687,56 @@ Version
             box-shadow: 0 1px 4px rgba(0,0,0,0.4);
         }
 
-        #purchased-badge {
+        /* 购票段徽标容器（多车次时纵向堆叠，每趟一块） */
+        #purchased-badges {
             position: absolute;
             top: 12px;
             left: 12px;
             z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-width: min(340px, 62vw);
+            pointer-events: none;   /* 容器不吃事件，按钮自己可点 */
+        }
+        .purchased-badge {
+            position: relative;
             background: rgba(255,255,255,0.95);
             border-left: 4px solid #e74c3c;
             border-radius: 4px;
-            padding: 8px 12px;
+            padding: 8px 34px 8px 12px;   /* 右侧留出拷贝按钮位 */
             font-size: 13px;
             box-shadow: 0 1px 6px rgba(0,0,0,0.2);
+            pointer-events: auto;
         }
-        #purchased-badge .pb-title { font-weight: bold; color: #e74c3c; }
-        #purchased-badge .pb-route { margin-top: 2px; color: #333; }
-        #purchased-badge .pb-meta { margin-top: 2px; color: #888; font-size: 12px; }
+        .purchased-badge .pb-title { font-weight: bold; color: #e74c3c; }
+        .purchased-badge .pb-route { margin-top: 2px; color: #333; }
+        .purchased-badge .pb-time { margin-top: 2px; color: #2c3e50; }
+        .purchased-badge .pb-meta { margin-top: 2px; color: #888; font-size: 12px; }
+        .purchased-badge .pb-seat { margin-top: 2px; color: #8e44ad; font-size: 12px; }
+        .purchased-badge .pb-copy {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            width: 24px;
+            height: 24px;
+            padding: 0;
+            border: 1px solid #e5e8ec;
+            border-radius: 4px;
+            background: #fff;
+            color: #7f8c8d;
+            font-size: 12px;
+            line-height: 1;
+            cursor: pointer;
+            transition: all .15s ease;
+        }
+        .purchased-badge .pb-copy:hover,
+        .purchased-badge .pb-copy:focus-visible { color: #2980b9; border-color: #2980b9; outline: none; }
+        .purchased-badge .pb-copy.is-done { color: #27ae60; border-color: #27ae60; }
+        @media (max-width: 768px) {
+            .purchased-badge .pb-copy { width: 36px; height: 36px; font-size: 15px; top: 4px; right: 4px; }
+            .purchased-badge { padding-right: 46px; }
+        }
 
         #map-legend {
             position: absolute;
@@ -1161,6 +1201,8 @@ Version
             const filename = `高铁${no}路线地图-${date}.png`;
             const opts = {
                 useCORS: true,
+                // v2.0.5: 拷贝按钮不进导出图（截图是分享物，图标无意义）
+                ignoreElements: (el) => !!(el.classList && el.classList.contains('pb-copy')),
                 scale: 2,
                 backgroundColor: '#ffffff',
                 logging: false,
@@ -1709,6 +1751,8 @@ Version
             stationMarkers = [];
             routeLines = [];
 
+            const badges = document.getElementById('purchased-badges');
+            if (badges) badges.remove();
             const badge = document.getElementById('purchased-badge');
             if (badge) badge.remove();
             const legend = document.getElementById('map-legend');
@@ -1821,7 +1865,8 @@ Version
                 renderTimetable(trainDataList, segments);
             }
             const anySegment = segments.find(s => s) || null;
-            renderPurchasedBadge(anySegment, trainDataList.find((t, i) => segments[i]) || trainDataList[0]);
+            // v2.0.5: 多车次时每趟各一块徽标、各带拷贝按钮
+            renderPurchasedBadges(trainDataList.map((t, i) => ({ segment: segments[i], trainData: t })));
             renderLegend(anySegment);
             
             if (allStationPoints.length > 0) {
@@ -1919,23 +1964,251 @@ Version
             });
         }
 
+        /** 线上行程页基址：复制文本里的链接固定指线上，本地/线上口径一致 */
+        const ONLINE_MAP_BASE = 'https://tools.cli.jaden.tech/train-map.html';
+
         /**
-         * 【5.4】渲染购票段徽标（左上角）
+         * 【5.4.1】空值判定（'UnSet' / 'pending' / '在线查询' 都是占位，不写进面板与复制文本）
+         */
+        function isBlankValue(value) {
+            const s = String(value == null ? '' : value).trim();
+            return s === '' || /^(unset|pending|在线查询)$/i.test(s);
+        }
+
+        /**
+         * 【5.4.2】'HH:MM' → 当日分钟数；非时间返回 null
+         */
+        function parseClock(value) {
+            const m = /^(\d{1,2}):(\d{2})$/.exec(String(value == null ? '' : value).trim());
+            if (!m) return null;
+            const h = Number(m[1]), mi = Number(m[2]);
+            if (h > 23 || mi > 59) return null;
+            return h * 60 + mi;
+        }
+
+        /**
+         * 【5.4.3】分钟数 → '4小时44分' / '52分钟'
+         */
+        function formatDuration(totalMinutes) {
+            if (totalMinutes == null || totalMinutes < 0) return '';
+            const h = Math.floor(totalMinutes / 60);
+            const m = totalMinutes % 60;
+            if (h === 0) return `${m}分钟`;
+            return m === 0 ? `${h}小时` : `${h}小时${m}分`;
+        }
+
+        /**
+         * 【5.4.4】累计行车时间字段 distance（'X小时Y分钟'）→ 分钟；无值返回 null
+         */
+        function parseDistanceMinutes(text) {
+            const s = String(text == null ? '' : text);
+            const h = /(\d+)\s*小时/.exec(s);
+            const mi = /(\d+)\s*分钟/.exec(s);
+            if (!h && !mi) return null;
+            return (h ? Number(h[1]) * 60 : 0) + (mi ? Number(mi[1]) : 0);
+        }
+
+        /**
+         * 【5.4.5】购票段时间口径：上车点发车 → 下车点到达（跨天 +24h）
+         * @returns {object} { depart, arrive, duration, durationMinutes, crossDay }
+         * @description 首站 arrivalTime / 末站 departureTime 是「起始站/终点站」哨兵，取同站另一时间兜底；
+         *              duration 以时间差为准（用户视角：几点上车、几点下车），累计 distance 差仅作交叉校验。
+         */
+        function segmentTimes(segment, trainData) {
+            const empty = { depart: '', arrive: '', duration: '', durationMinutes: null, crossDay: false };
+            if (!segment || !trainData || !trainData.stations) return empty;
+            const fromStation = trainData.stations[segment.fromIndex] || {};
+            const toStation = trainData.stations[segment.toIndex] || {};
+
+            let departRaw = fromStation.departureTime;
+            let departMins = parseClock(departRaw);
+            if (departMins === null) {
+                departRaw = fromStation.arrivalTime;
+                departMins = parseClock(departRaw);
+            }
+            let arriveRaw = toStation.arrivalTime;
+            let arriveMins = parseClock(arriveRaw);
+            if (arriveMins === null) {
+                arriveRaw = toStation.departureTime;
+                arriveMins = parseClock(arriveRaw);
+            }
+            if (departMins === null || arriveMins === null) return empty;
+
+            let crossDay = false;
+            let durationMinutes = arriveMins - departMins;
+            if (durationMinutes < 0) {
+                durationMinutes += 24 * 60;
+                crossDay = true;
+            }
+
+            const cumTo = parseDistanceMinutes(toStation.distance);
+            const cumFrom = parseDistanceMinutes(fromStation.distance);
+            if (cumTo !== null && cumFrom !== null && Math.abs((cumTo - cumFrom) - durationMinutes) > 2) {
+                console.warn(`购票段历时口径不一致：时间差=${durationMinutes}分，累计差=${cumTo - cumFrom}分（以时间差为准）`);
+            }
+
+            return {
+                depart: String(departRaw).trim(),
+                arrive: String(arriveRaw).trim(),
+                duration: formatDuration(durationMinutes),
+                durationMinutes,
+                crossDay
+            };
+        }
+
+        /**
+         * 【5.4.6】生成购票段 Markdown（精简 6 行，可直接粘贴）
+         * @param {object} segment - 购票段 { from, to, fromIndex, toIndex }
+         * @param {object} trainData - 车次数据
+         * @param {string} [linkUrl] - 行程链接，缺省用线上地址 + 精确车次 key
+         */
+        function buildSegmentMarkdown(segment, trainData, linkUrl) {
+            if (!segment || !trainData) return '';
+            const stations = trainData.stations || [];
+            const count = stations.filter((s, i) => isInPurchasedSegment(i, segment)).length;
+            const times = segmentTimes(segment, trainData);
+            const lines = [`## 🎫 ${trainData.train_no} · ${trainData.depart_date} · ${segment.from} → ${segment.to}`, ''];
+
+            if (times.depart) lines.push(`- 发车：${times.depart}（${segment.from}）`);
+            if (times.arrive) lines.push(`- 到站：${times.arrive}（${segment.to}）`);
+            lines.push(`- ${[times.duration ? `历时 ${times.duration}` : '', `共 ${count} 站`].filter(Boolean).join(' · ')}`);
+
+            const seat = isBlankValue(trainData.seat) ? '' : String(trainData.seat).trim();
+            const gate = isBlankValue(trainData.ticket_checkpoint) ? '' : String(trainData.ticket_checkpoint).trim();
+            const seatBits = [];
+            if (seat) seatBits.push(`座位 ${seat}`);
+            if (gate) seatBits.push(`检票口 ${gate}`);
+            if (seatBits.length) lines.push(`- ${seatBits.join(' · ')}`);
+
+            const fallbackKey = `${String(trainData.depart_date || '').replace(/-/g, '')}-${trainData.train_no || ''}`;
+            const link = linkUrl || `${ONLINE_MAP_BASE}?no=${fallbackKey}`;
+            if (link) lines.push(`- 行程图：${link}`);
+
+            return lines.join('\n');
+        }
+
+        /**
+         * 【5.4.7】复制到剪贴板：能力判断前置 + execCommand 回退 + 失败可见反馈
+         * @description 与 train-timetable.html 的 copyTextCL050 同口径。
+         *              本地 http://jaden.local:8081 是非安全上下文（实测 isSecureContext=false、
+         *              navigator.clipboard 不存在），必须走 textarea + execCommand 回退。
+         */
+        function copyTextToClipboard(text, onOk, onFail) {
+            const notify = (ok) => {
+                if (ok) { if (typeof onOk === 'function') onOk(); }
+                else if (typeof onFail === 'function') onFail(new Error('copy failed'));
+            };
+            const fallback = () => {
+                try {
+                    const ta = document.createElement('textarea');
+                    ta.value = text;
+                    ta.setAttribute('readonly', '');
+                    ta.style.cssText = 'position:fixed;top:-1000px;left:-1000px;opacity:0';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    ta.setSelectionRange(0, ta.value.length);
+                    const ok = document.execCommand('copy');
+                    ta.remove();
+                    notify(ok);
+                } catch (e) {
+                    console.warn('execCommand 复制失败:', e);
+                    notify(false);
+                }
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
+                navigator.clipboard.writeText(text).then(() => notify(true)).catch(fallback);
+            } else {
+                fallback();
+            }
+        }
+
+        /**
+         * 【5.4.8】点击拷贝按钮：生成 Markdown → 复制 → 可见反馈
+         */
+        function copySegmentInfo(btn, segment, trainData) {
+            const text = buildSegmentMarkdown(segment, trainData);
+            if (!text) { showError('购票段信息为空，无法复制'); return; }
+            const original = btn ? btn.innerHTML : '';
+            copyTextToClipboard(
+                text,
+                () => {
+                    showNotice('已复制购票段信息（Markdown）');
+                    if (btn) {
+                        btn.innerHTML = '<i class="fas fa-check"></i>';
+                        btn.classList.add('is-done');
+                        setTimeout(() => {
+                            btn.innerHTML = original;
+                            btn.classList.remove('is-done');
+                        }, 1600);
+                    }
+                },
+                (err) => showError(`复制失败：${(err && err.message) || '未知错误'}`)
+            );
+        }
+
+        /**
+         * 【5.4】渲染购票段徽标（左上角，多车次时每趟一块、各带拷贝按钮）
+         * @param {array} entries - [{ segment, trainData }, ...]，segment 为空的项跳过
+         */
+        function renderPurchasedBadges(entries) {
+            const mapContainer = document.getElementById('map-container');
+            if (!mapContainer || !entries || entries.length === 0) return;
+
+            const container = document.createElement('div');
+            container.id = 'purchased-badges';
+            let seq = 0;
+
+            entries.forEach(entry => {
+                const segment = entry && entry.segment;
+                const trainData = entry && entry.trainData;
+                if (!segment || !trainData) return;
+
+                const segStations = (trainData.stations || []).filter((s, i) => isInPurchasedSegment(i, segment));
+                const times = segmentTimes(segment, trainData);
+                const timeBits = [];
+                if (times.depart) timeBits.push(`发车 ${times.depart}`);
+                if (times.arrive) timeBits.push(`到站 ${times.arrive}`);
+                if (times.duration) timeBits.push(`历时 ${times.duration}`);
+
+                const seat = isBlankValue(trainData.seat) ? '' : String(trainData.seat).trim();
+                const gate = isBlankValue(trainData.ticket_checkpoint) ? '' : String(trainData.ticket_checkpoint).trim();
+                const seatBits = [];
+                if (seat) seatBits.push(`座位 ${seat}`);
+                if (gate) seatBits.push(`检票口 ${gate}`);
+
+                const badge = document.createElement('div');
+                badge.className = 'purchased-badge';
+                if (seq === 0) badge.id = 'purchased-badge';   // 兼容只取首个徽标的既有脚本
+                badge.innerHTML = `
+                    <button class="pb-copy" type="button" title="复制购票段信息（Markdown）" aria-label="复制购票段信息"><i class="fas fa-copy"></i></button>
+                    <div class="pb-title">🎫 购票段</div>
+                    <div class="pb-route">${segment.from} → ${segment.to}</div>
+                    ${timeBits.length ? `<div class="pb-time">${timeBits.join(' · ')}</div>` : ''}
+                    <div class="pb-meta">${trainData.train_no}次 · ${trainData.depart_date} · 共 ${segStations.length} 站</div>
+                    ${seatBits.length ? `<div class="pb-seat">${seatBits.join(' · ')}</div>` : ''}
+                `;
+
+                const btn = badge.querySelector('.pb-copy');
+                if (btn) {
+                    L.DomEvent.disableClickPropagation(badge);
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        copySegmentInfo(btn, segment, trainData);
+                    });
+                }
+                container.appendChild(badge);
+                seq += 1;
+            });
+
+            if (container.children.length === 0) return;
+            mapContainer.appendChild(container);
+        }
+
+        /**
+         * 【5.4.0】单车次兼容入口（内部转调 renderPurchasedBadges）
          */
         function renderPurchasedBadge(segment, trainData) {
-            if (!segment) return;
-            const mapContainer = document.getElementById('map-container');
-            if (!mapContainer) return;
-            const badge = document.createElement('div');
-            badge.id = 'purchased-badge';
-            const segStations = trainData.stations.filter((s, i) => isInPurchasedSegment(i, segment));
-            const count = segStations.length;
-            badge.innerHTML = `
-                <div class="pb-title">🎫 购票段</div>
-                <div class="pb-route">${segment.from} → ${segment.to}</div>
-                <div class="pb-meta">${trainData.train_no}次 · ${trainData.depart_date} · 共 ${count} 站</div>
-            `;
-            mapContainer.appendChild(badge);
+            renderPurchasedBadges([{ segment, trainData }]);
         }
 
         /**
@@ -2368,6 +2641,9 @@ Version
                             train_no: train.train_no,
                             train_name: train.train_name,
                             depart_date: train.depart_date,
+                            // v2.0.5: 座位/检票口原先被丢弃，购票段面板与复制文本要用
+                            seat: train.seat || '',
+                            ticket_checkpoint: train.ticket_checkpoint || '',
                             stations: train.stations || []
                         };
 
@@ -2434,6 +2710,6 @@ Version
          */
         document.addEventListener('DOMContentLoaded', main);
     </script>
-<!-- build: train-map @ script-miner 9b6592af 2026-11-16 10:30 -->
+<!-- build: train-map @ script-miner 22fa7198 2026-11-16 11:25 -->
 </body>
 </html>
