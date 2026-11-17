@@ -26,6 +26,11 @@ Sublime Text
 - Command + k, Command + j 展示所有函数代码
 
 Version
+- v2.0.9@2026/11/17
+  1. 时刻表面板折叠改为「整块收起」：点 header 箭头后整个面板消失，只在右上角留 1 个圆形列表按钮（fa-list），点它恢复面板（原「只折表格内容」语义取消）
+  2. 购票段面板标题（车次号）也能点：展开态点标题即收起为小球，与右上角收起按钮同义；收起态点小球恢复
+  3. 右下地图控件改双列三行：Home｜收起、放大｜缩小、显隐城市名｜保存图片（删除两条分隔线）；点「收起」把控件区收成右下圆形列表按钮，点它恢复
+  4. 导出图片排除三个新控件（两个圆形入口 + 控件区收起按钮），面板与徽标本体照旧入图
 - v2.0.8@2026/11/16
   1. 顶栏按钮重排：「切换车次」从右下控件栈搬到时刻表面板 header，与折叠箭头并排（切换车次在左，新类 .header-btn 与 header 融合，移动端 36px 热区）；点击 stopPropagation，不再连带折叠时刻表
   2. 右下控件栈首原位改为 Home 按钮（fa-home）：点击返回门户首页 `/` —— 本地为仓根门户、线上为 tools.cli 门户
@@ -258,14 +263,44 @@ Version
         .city-label-middle { color: #3498db; }
         
         .leaflet-control-custom-zoom {
-            display: flex;
-            flex-direction: column;
+            /* v2.0.9：单列 → 双列（Home|收起 / 放大|缩小 / 显隐城市名|保存图片） */
+            display: grid;
+            grid-template-columns: repeat(2, 40px);
             gap: 2px;
             background: white;
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
             overflow: hidden;
         }
+        .leaflet-control-custom-zoom.is-collapsed { display: none; }
+
+        /* v2.0.9：面板/控件区收起后的圆形入口按钮（照 .purchased-badge.is-collapsed 的圆钮口径） */
+        .launcher-btn {
+            display: none;
+            position: fixed;
+            width: 36px;
+            height: 36px;
+            padding: 0;
+            border: none;
+            border-radius: 50%;
+            background: #3498db;
+            color: #fff;
+            font-size: 15px;
+            line-height: 1;
+            cursor: pointer;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+            z-index: 1001;
+            transition: background .15s ease, transform .15s ease;
+        }
+        .launcher-btn.is-shown { display: flex; }
+        .launcher-btn:hover { background: #2980b9; transform: scale(1.06); }
+        .launcher-btn:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+        .launcher-btn#timetable-launcher { top: 10px; right: 10px; }
+        .launcher-btn#zoom-launcher { bottom: 10px; right: 10px; width: 40px; height: 40px; font-size: 16px; }
+
+        .timetable-panel.is-collapsed { display: none; }
         
         .zoom-btn {
             width: 40px;
@@ -358,6 +393,9 @@ Version
             .train-popup .time-info { font-size: 11px; }
             .train-popup, .route-popup { padding: 6px !important; }
             .zoom-btn { width: 44px; height: 44px; font-size: 24px; }
+            .leaflet-control-custom-zoom { grid-template-columns: repeat(2, 44px); }
+            .launcher-btn { width: 44px; height: 44px; font-size: 17px; }
+            .launcher-btn#zoom-launcher { width: 44px; height: 44px; }
         }
         
         .train-list-modal {
@@ -746,7 +784,7 @@ Version
             box-shadow: 0 1px 6px rgba(0,0,0,0.2);
             pointer-events: auto;
         }
-        .purchased-badge .pb-title { font-weight: bold; color: #e74c3c; }
+        .purchased-badge .pb-title { font-weight: bold; color: #e74c3c; cursor: pointer; }
         .purchased-badge .pb-route { margin-top: 2px; color: #333; }
         .purchased-badge .pb-time { margin-top: 2px; color: #2c3e50; }
         .purchased-badge .pb-meta { margin-top: 2px; color: #888; font-size: 12px; }
@@ -965,6 +1003,14 @@ Version
             </table>
         </div>
     </div>
+
+    <!-- v2.0.9：面板/控件区收起后的圆形入口（点开即恢复） -->
+    <button class="launcher-btn" id="timetable-launcher" type="button" title="展开时刻表" aria-label="展开时刻表">
+        <i class="fas fa-list"></i>
+    </button>
+    <button class="launcher-btn" id="zoom-launcher" type="button" title="展开地图控件" aria-label="展开地图控件">
+        <i class="fas fa-list"></i>
+    </button>
     
     <div id="train-list-modal" class="train-list-modal">
         <div class="train-list-content">
@@ -1275,7 +1321,7 @@ Version
             const opts = {
                 useCORS: true,
                 // v2.0.5: 拷贝按钮不进导出图（截图是分享物，图标无意义）
-                ignoreElements: (el) => !!(el.classList && (el.classList.contains('pb-copy') || el.classList.contains('pb-collapse'))),
+                ignoreElements: (el) => !!(el.classList && (el.classList.contains('pb-copy') || el.classList.contains('pb-collapse') || el.classList.contains('zoom-collapse') || el.classList.contains('launcher-btn'))),
                 scale: 2,
                 backgroundColor: '#ffffff',
                 logging: false,
@@ -2355,6 +2401,17 @@ Version
                     toggleBadgeCollapse(badge, trainData, segment);
                 });
 
+                // v2.0.9：展开态点标题也收起（与 .pb-collapse 同义）；收起态交给整块点击展开
+                const titleEl = badge.querySelector('.pb-title');
+                if (titleEl) {
+                    titleEl.title = '点击收起面板';
+                    titleEl.addEventListener('click', (e) => {
+                        if (badge.classList.contains('is-collapsed')) return;
+                        e.stopPropagation();
+                        toggleBadgeCollapse(badge, trainData, segment);
+                    });
+                }
+
                 // 按模块级状态复原折叠态（切车次/勾选显隐后重渲染也不丢）
                 applyBadgeCollapse(badge, isBadgeCollapsed(collapsedBadgeKeys, badgeKeyOf(trainData)), trainData, segment);
 
@@ -2464,20 +2521,24 @@ Version
         // ============================================================
         
         /**
-         * 【5.3】折叠/展开时刻表面板
-         * @description 切换整个时刻表面板的折叠/展开状态
+         * 【5.3】折叠/展开时刻表面板（v2.0.9：整块收起成圆形入口按钮）
+         * @description 收起 = 面板 display:none + 右上角圆形 fa-list 按钮出现；点圆钮恢复。
+         *              折叠状态存模块级布尔（同 collapsedBadgeKeys 口径：本页会话保留、刷新复位、
+         *              不写 localStorage —— 分享/截图页持久化 UI 状态会让人以为界面坏了）。
          */
+        let timetablePanelCollapsed = false;
+
+        function setTimetableCollapsed(collapsed) {
+            const panel = document.getElementById('timetable-panel');
+            const launcher = document.getElementById('timetable-launcher');
+            if (!panel) return;
+            timetablePanelCollapsed = !!collapsed;
+            panel.classList.toggle('is-collapsed', timetablePanelCollapsed);
+            if (launcher) launcher.classList.toggle('is-shown', timetablePanelCollapsed);
+        }
+
         function toggleTimetable() {
-            const body = document.getElementById('timetable-body');
-            const btn = document.getElementById('timetable-toggle-btn');
-            
-            if (body.classList.contains('collapsed')) {
-                body.classList.remove('collapsed');
-                btn.innerHTML = '<i class="fas fa-chevron-up"></i>';
-            } else {
-                body.classList.add('collapsed');
-                btn.innerHTML = '<i class="fas fa-chevron-down"></i>';
-            }
+            setTimetableCollapsed(!document.getElementById('timetable-panel').classList.contains('is-collapsed'));
         }
 
         /**
@@ -2496,6 +2557,42 @@ Version
                     showTrainListModal();
                 });
             }
+        }
+
+        /**
+         * 【5.5】收起后的圆形入口按钮（v2.0.9）
+         * @description 时刻表面板圆钮 → 恢复面板；控件区圆钮 → 恢复双列控件。
+         */
+        function bindLaunchers() {
+            const timetableLauncher = document.getElementById('timetable-launcher');
+            if (timetableLauncher) {
+                timetableLauncher.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    setTimetableCollapsed(false);
+                });
+            }
+            const zoomLauncher = document.getElementById('zoom-launcher');
+            if (zoomLauncher) {
+                zoomLauncher.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    setZoomCollapsed(false);
+                });
+            }
+        }
+
+        /**
+         * 【5.6】收起/展开地图控件区（v2.0.9）
+         * @description 控件区双列（Home|收起 / 放大|缩小 / 显隐城市名|保存图片）；收起后显示右下圆形
+         *              fa-list 按钮，点它恢复。状态同样只存模块级布尔。
+         */
+        let zoomControlEl = null;
+        let zoomPanelCollapsed = false;
+
+        function setZoomCollapsed(collapsed) {
+            zoomPanelCollapsed = !!collapsed;
+            if (zoomControlEl) zoomControlEl.classList.toggle('is-collapsed', zoomPanelCollapsed);
+            const launcher = document.getElementById('zoom-launcher');
+            if (launcher) launcher.classList.toggle('is-shown', zoomPanelCollapsed);
         }
 
         // ============================================================
@@ -2532,10 +2629,13 @@ Version
                 homeBtn.innerHTML = '<i class="fas fa-home"></i>';
                 homeBtn.title = '返回门户首页';
                 homeBtn.setAttribute('aria-label', '返回门户首页');
-                
-                const divider = L.DomUtil.create('div', 'divider', container);
-                divider.style.cssText = 'height: 1px; background: #e9ecef; margin: 2px 0;';
-                
+
+                // 第一行第二格：收起整个控件区（v2.0.9，双列布局）
+                const collapseBtn = L.DomUtil.create('button', 'switch-btn zoom-collapse', container);
+                collapseBtn.innerHTML = '<i class="fas fa-list"></i>';
+                collapseBtn.title = '收起地图控件';
+                collapseBtn.setAttribute('aria-label', '收起地图控件');
+
                 const zoomInBtn = L.DomUtil.create('button', 'zoom-btn zoom-btn-zoom-in', container);
                 zoomInBtn.innerHTML = '+';
                 zoomInBtn.title = '放大';
@@ -2543,9 +2643,6 @@ Version
                 const zoomOutBtn = L.DomUtil.create('button', 'zoom-btn zoom-btn-zoom-out', container);
                 zoomOutBtn.innerHTML = '-';
                 zoomOutBtn.title = '缩小';
-
-                const divider2 = L.DomUtil.create('div', 'divider', container);
-                divider2.style.cssText = 'height: 1px; background: #e9ecef; margin: 2px 0;';
 
                 const toggleBtn = L.DomUtil.create('button', 'switch-btn toggle-labels-btn', container);
                 toggleBtn.innerHTML = '<i class="fas fa-eye"></i>';
@@ -2557,7 +2654,13 @@ Version
                 
                 L.DomEvent.disableClickPropagation(container);
                 L.DomEvent.disableScrollPropagation(container);
-                
+
+                zoomControlEl = container;
+
+                L.DomEvent.on(collapseBtn, 'click', L.DomEvent.stopPropagation);
+                L.DomEvent.on(collapseBtn, 'click', L.DomEvent.preventDefault);
+                L.DomEvent.on(collapseBtn, 'click', () => setZoomCollapsed(true));
+
                 L.DomEvent.on(homeBtn, 'click', L.DomEvent.stopPropagation);
                 L.DomEvent.on(homeBtn, 'click', L.DomEvent.preventDefault);
                 L.DomEvent.on(homeBtn, 'click', () => { window.location.href = '/'; });
@@ -2865,6 +2968,7 @@ Version
             try {
                 initMap();
                 bindHeaderButtons();
+                bindLaunchers();
                 
                 const loadSuccess = await fetchTrainData();
                 if (!loadSuccess) {
@@ -2893,6 +2997,6 @@ Version
          */
         document.addEventListener('DOMContentLoaded', main);
     </script>
-<!-- build: train-map @ script-miner 6e1ca878 2026-11-17 15:56 -->
+<!-- build: train-map @ script-miner 3be39048 2026-11-17 15:57 -->
 </body>
 </html>
