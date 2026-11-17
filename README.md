@@ -8,7 +8,7 @@
 - 手工只碰：`CNAME` / `.nojekyll` / 本 `README.md`（其余文件都是产物）
 - 回滚：`git revert <site@build 提交>` 后 push，GitHub Pages 自动重建
 
-## 页面（9）
+## 页面（10）
 
 | 规范址 | 名称 | 分组 | 形态 | 说明 |
 |:--|:--|:--|:--:|:--|
@@ -21,5 +21,6 @@
 | `/git-cloner.html` | Git 仓库克隆器 | 开发 | D | 本地仓库克隆台账：列表、筛选、统计与 AI 摘要入口，支持 ?range=all 全量视图。 |
 | `/web2md.html` | 微信文章转 Markdown | 开发 | D | 微信文章转 Markdown 的本地台账：已处理清单、标签与关联计数、分栏原文预览。 |
 | `/lock-screen.html` | 锁屏小组件示例 | 系统 | C | iOS 锁屏小组件（Scriptable）效果示例：时钟、天气与今日诗歌同屏演示。 |
+| `/site-docs.html` | 站点说明 | 关于 | A | 本站定位、页面清单、URL 规范、发布流程与公开面纪律，随构建快照发布。 |
 
 > 本文件由构建器生成（`_site_readme`），不要手工改；改文案请改源码仓。
