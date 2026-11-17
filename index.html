@@ -101,12 +101,53 @@
   .data-table td.ops-cell a { margin-right:4px; }
   .ops-hover { visibility:hidden; }
   .data-table tbody tr:hover .ops-hover { visibility:visible; }
+
+  /* ── 页面文档抽屉（cli-args-reference §2-17：版本行入口 + 固定面板 + 内联数据） ── */
+  .af-ver { cursor:pointer; color:#9ca3af; font-size:.75rem; }
+  .af-ver:hover, .af-ver:focus-visible { color:#e0e0e0; }
+  .af-ver a { color:inherit; text-decoration:none; }
+  .af-caret { margin-left:3px; }
+  .docs-overlay { position:fixed; inset:0; background:rgba(0,0,0,.55); display:none;
+         align-items:center; justify-content:center; z-index:200; }
+  .docs-overlay.show { display:flex; }
+  .docs-panel { width:60vw; height:90vh; display:flex; flex-direction:column;
+         background:var(--surface-900,#111); border:1px solid #2a2a3e; border-radius:12px;
+         box-shadow:0 20px 60px rgba(0,0,0,.5); overflow:hidden; }
+  .docs-head { display:flex; align-items:center; gap:4px; padding:6px 10px;
+         border-bottom:1px solid #2a2a3e; flex:0 0 auto; }
+  .dp-tab { border:0; background:none; padding:8px 12px; font-size:.8rem; color:#9ca3af;
+         cursor:pointer; border-bottom:2px solid transparent; }
+  .dp-tab.on { color:#e0e0e0; border-bottom-color:#4f46e5; font-weight:600; }
+  .dp-close { margin-left:auto; border:0; background:none; color:#9ca3af; font-size:1rem;
+         cursor:pointer; padding:4px 8px; }
+  .dp-close:hover { color:#e0e0e0; }
+  .dp-sub { padding:6px 14px; font-size:.72rem; color:#6b7280; border-bottom:1px solid #1f1f2e;
+         flex:0 0 auto; }
+  .docs-body { flex:1 1 auto; overflow:auto; padding:12px 14px; font-size:.8rem; }
+  .dp-item { display:grid; grid-template-columns:64px 92px 52px 1fr; gap:8px; padding:5px 6px;
+         border-bottom:1px solid #1a1a2e; align-items:baseline; }
+  .dp-item.dp-current { background:rgba(79,70,229,.16); border-radius:6px; }
+  .dp-ver { font-family:ui-monospace,Menlo,monospace; color:#a5b4fc; }
+  .dp-date { color:#6b7280; }
+  .dp-kind { color:#fbbf24; }
+  .dp-sum { color:#cbd5e1; }
+  .dp-sec { margin:0 0 14px; }
+  .dp-sec h4 { margin:0 0 6px; font-size:.82rem; color:#e0e0e0; }
+  .dp-sec ul { margin:0; padding-left:18px; color:#cbd5e1; }
+  .dp-sec li { margin:2px 0; }
+  .dp-kv { display:grid; grid-template-columns:110px 1fr; gap:6px 10px; margin:0 0 14px; }
+  .dp-kv dt { color:#6b7280; }
+  .dp-kv dd { margin:0; color:#cbd5e1; }
+  .dp-ok { color:#4ade80; } .dp-warn { color:#fbbf24; } .dp-off { color:#6b7280; }
+  .dp-foot { margin-top:10px; color:#6b7280; font-size:.72rem; }
+  .dp-foot a { color:#a5b4fc; }
+  @media (max-width: 1023px) { .docs-panel { width:100vw; height:100vh; border-radius:0; } }
 </style>
 </head>
 <body>
 <div class="wrapper">
   <h1>工具集 · tools.cli.jaden.tech</h1>
-  <div class="meta">9 个页面 · 更新于 2026-11-16 · 源码仓 script-miner · 构建器 pages-manager</div>
+  <div class="meta">9 个页面 · 更新于 2026-11-17 · 源码仓 script-miner · 构建器 pages-manager</div>
   <div class="table-toolbar">
     <input class="input-dark search-box" id="searchInput" placeholder="搜索页名 / 分组 / 说明…">
     <select class="select-dark" id="groupFilter"><option value="">全部分组</option></select>
@@ -114,7 +155,7 @@
     <div class="flex-1"></div>
     <span class="stat-label" id="statInfo"></span>
   </div>
-  
+  <div class="split" id="split" data-mode="browse"><div class="list-col">
   <div class="table-wrap">
     <table class="data-table">
       <thead id="thead"></thead>
@@ -123,15 +164,30 @@
     <div class="empty-state" id="emptyState" style="display:none">📭 无匹配数据</div>
   </div>
   <div class="pager" id="pager"></div>
-  
-  <div class="footer">页面 slug 即规范址（一级扁平，<code>/{slug}.html</code>）· 旧地址走别名桩 302 到规范址 · 构建水印见页面源码末尾注释</div>
+  </div><aside class="detail-pane" id="detailPane"></aside></div>
+  <div class="footer"><div class="footer-line">页面 slug 即规范址（一级扁平，<code>/&lt;slug&gt;.html</code>）· 旧地址走别名桩跳转到规范址 · 构建水印见页面源码末尾注释</div><div class="footer-line"><span class="af-ver" id="hfVersion" role="button" tabindex="0" aria-haspopup="dialog" aria-controls="docsOverlay" title="点击查看发布记录 / 页面清单 / 本站信息（Enter / 空格也可）"><code>工具集 · v1.1(20261116)</code><span class="af-caret">▾</span></span><noscript> · v1.1(20261116)</noscript></div></div>
+</div>
+<div class="docs-overlay" id="docsOverlay" role="dialog" aria-modal="true" aria-label="本站发布记录与页面清单">
+  <div class="docs-panel">
+    <div class="docs-head" role="tablist">
+      <button class="dp-tab on" data-tab="changelog" role="tab" aria-selected="true">📜 发布记录</button>
+      <button class="dp-tab" data-tab="features" role="tab" aria-selected="false">📋 页面清单</button>
+      <button class="dp-tab" data-tab="state" role="tab" aria-selected="false">ℹ️ 本站信息</button>
+      <button class="dp-close" id="docsClose" title="关闭（Esc）">✕</button>
+    </div>
+    <div class="dp-sub" id="docsSub"></div>
+    <div class="docs-body" id="docsBody"></div>
+  </div>
 </div>
 
 
 <script>
-var COLUMNS = [{"key": "title", "label": "页名", "width": "22%", "link": "url"}, {"key": "group", "label": "分组", "width": "10%"}, {"key": "class", "label": "形态", "width": "8%", "cls": "badge badge-blue"}, {"key": "visibility", "label": "可见性", "width": "10%"}, {"key": "aliases", "label": "别名", "width": "16%", "cls": "muted"}, {"key": "description", "label": "说明", "width": "34%", "wrap": true}];
+var PAGE_MODE = "site";
+var COLUMNS = [{"key": "title", "label": "页名", "width": "20%", "link": "url", "sub": "aliases"}, {"key": "group", "label": "分组", "width": "10%"}, {"key": "visibility", "label": "可见性", "width": "10%", "cls": "vis"}, {"key": "description", "label": "说明", "width": "45%"}, {"key": "ops", "label": "操作", "width": "15%", "ops": true, "sortable": false}];
 var DATA = [{"slug": "train-map", "title": "高铁线路图", "group": "出行", "class": "D", "visibility": "masked", "aliases": "/12306.html", "description": "高铁车次全程线路图：途经站点、购票区间高亮、时刻表与座位信息，数据来自 Supabase 只读表。", "url": "/train-map.html"}, {"slug": "pmp-itto", "title": "PMP ITTO 知识图谱", "group": "学习", "class": "B", "visibility": "public", "aliases": "/pmp.html", "description": "PMP 十大知识领域 × 五大过程组 × 49 子过程的 ITTO 关系图谱，备考速查。", "url": "/pmp-itto.html"}, {"slug": "english-translator", "title": "英语句型翻译助手", "group": "学习", "class": "A", "visibility": "public", "aliases": "/translater.html", "description": "英语句型与时态转换对照工具，覆盖常见语法的正误示例。", "url": "/english-translator.html"}, {"slug": "brand-colors", "title": "品牌配色体系", "group": "设计", "class": "A", "visibility": "public", "aliases": "/palette.html", "description": "品牌色板与配色组合速查，含色值、对比度与使用场景建议。", "url": "/brand-colors.html"}, {"slug": "moments-cover", "title": "朋友圈封面生成器", "group": "设计", "class": "A", "visibility": "public", "aliases": "/cover.html", "description": "生成微信朋友圈封面图（1080×1800），可导出为 PNG 直接使用。", "url": "/moments-cover.html"}, {"slug": "daily-poetry", "title": "每日诗歌", "group": "生活", "class": "B", "visibility": "public", "aliases": "/poetry.html", "description": "每日一首诗：原文、注释与赏析，随构建快照发布。", "url": "/daily-poetry.html"}, {"slug": "git-cloner", "title": "Git 仓库克隆器", "group": "开发", "class": "D", "visibility": "public", "aliases": "/cloner.html", "description": "本地仓库克隆台账：列表、筛选、统计与 AI 摘要入口，支持 ?range=all 全量视图。", "url": "/git-cloner.html"}, {"slug": "web2md", "title": "微信文章转 Markdown", "group": "开发", "class": "D", "visibility": "public", "aliases": "—", "description": "微信文章转 Markdown 的本地台账：已处理清单、标签与关联计数、分栏原文预览。", "url": "/web2md.html"}, {"slug": "lock-screen", "title": "锁屏小组件示例", "group": "系统", "class": "C", "visibility": "public", "aliases": "/lockscreen.html", "description": "iOS 锁屏小组件（Scriptable）效果示例：时钟、天气与今日诗歌同屏演示。", "url": "/lock-screen.html"}];
 var GROUPS = ["出行", "学习", "设计", "生活", "开发", "系统"];
+var COLUMNS_COMPACT = [{"key": "title", "label": "页名", "link": "url"}, {"key": "aliases", "label": "别名", "width": "96px", "cls": "muted", "sortable": false}];
+var DETAIL_DATA = {"train-map": {"slug": "train-map", "title": "高铁线路图", "group": "出行", "class": "D", "class_label": "后端增强", "class_desc": "有同源后端调用，但带静态兜底：后端不可用时自动降级展示", "visibility": "masked", "visibility_label": "部分信息打码", "description": "高铁车次全程线路图：途经站点、购票区间高亮、时刻表与座位信息，数据来自 Supabase 只读表。", "scenario": "用一张线路图看清高铁车次全程站点与本次购票区间；票面由「12306 车票助手」插件导出，`trainer` 入库后页面只读展示——解决「票面只有起终站、看不出全程与换乘位置」。", "url": "/train-map.html", "aliases": ["/12306.html"], "web": [{"slug": "train-map", "title": "高铁线路图", "self": true, "url": "/train-map.html"}], "tm": ["12306车票助手", "12306车票助手@personal_travel"], "cli": ["train-manager"], "site": "https://tools.cli.jaden.tech/"}, "pmp-itto": {"slug": "pmp-itto", "title": "PMP ITTO 知识图谱", "group": "学习", "class": "B", "class_label": "伴生同目录", "class_desc": "需要同目录的静态伴生文件（js/css/数据），部署时一起发布", "visibility": "public", "visibility_label": "公开", "description": "PMP 十大知识领域 × 五大过程组 × 49 子过程的 ITTO 关系图谱，备考速查。", "scenario": "备考 PMP 时按「十大知识领域 × 五大过程组 × 49 子过程」速查 ITTO，替代翻 PDF——解决知识点散落在书里、临考找不到对应关系。", "url": "/pmp-itto.html", "aliases": ["/pmp.html"], "web": [{"slug": "pmp-itto", "title": "PMP ITTO 知识图谱", "self": true, "url": "/pmp-itto.html"}], "tm": [], "cli": [], "site": "https://tools.cli.jaden.tech/"}, "english-translator": {"slug": "english-translator", "title": "英语句型翻译助手", "group": "学习", "class": "A", "class_label": "自包含", "class_desc": "单文件页面，下载后 file:// 直开即可用", "visibility": "public", "visibility_label": "公开", "description": "英语句型与时态转换对照工具，覆盖常见语法的正误示例。", "scenario": "英语句型与时态转换练习：给中文意图，对照常见语法点的正误示例——解决「知道规则但写不出对应句型」。", "url": "/english-translator.html", "aliases": ["/translater.html"], "web": [{"slug": "english-translator", "title": "英语句型翻译助手", "self": true, "url": "/english-translator.html"}], "tm": [], "cli": [], "site": "https://tools.cli.jaden.tech/"}, "brand-colors": {"slug": "brand-colors", "title": "品牌配色体系", "group": "设计", "class": "A", "class_label": "自包含", "class_desc": "单文件页面，下载后 file:// 直开即可用", "visibility": "public", "visibility_label": "公开", "description": "品牌色板与配色组合速查，含色值、对比度与使用场景建议。", "scenario": "收敛个人项目的品牌色板：先在这里挑组合与对比度，再落成 CSS 变量——解决「每个项目各配一套色、越做越花」。", "url": "/brand-colors.html", "aliases": ["/palette.html"], "web": [{"slug": "brand-colors", "title": "品牌配色体系", "self": true, "url": "/brand-colors.html"}], "tm": [], "cli": [], "site": "https://tools.cli.jaden.tech/"}, "moments-cover": {"slug": "moments-cover", "title": "朋友圈封面生成器", "group": "设计", "class": "A", "class_label": "自包含", "class_desc": "单文件页面，下载后 file:// 直开即可用", "visibility": "public", "visibility_label": "公开", "description": "生成微信朋友圈封面图（1080×1800），可导出为 PNG 直接使用。", "scenario": "生成 1080×1800 微信朋友圈封面并导出 PNG——解决「每次发圈临时找模板、排版比例不对」。", "url": "/moments-cover.html", "aliases": ["/cover.html"], "web": [{"slug": "moments-cover", "title": "朋友圈封面生成器", "self": true, "url": "/moments-cover.html"}], "tm": [], "cli": [], "site": "https://tools.cli.jaden.tech/"}, "daily-poetry": {"slug": "daily-poetry", "title": "每日诗歌", "group": "生活", "class": "B", "class_label": "伴生同目录", "class_desc": "需要同目录的静态伴生文件（js/css/数据），部署时一起发布", "visibility": "public", "visibility_label": "公开", "description": "每日一首诗：原文、注释与赏析，随构建快照发布。", "scenario": "每天一首诗（原文/注释/赏析），同时作为锁屏组件与对外快照的数据源——解决「晨间想读点东西但不想开订阅」。", "url": "/daily-poetry.html", "aliases": ["/poetry.html"], "web": [{"slug": "daily-poetry", "title": "每日诗歌", "self": true, "url": "/daily-poetry.html"}, {"slug": "lock-screen", "title": "锁屏小组件示例", "self": false, "url": "/lock-screen.html"}], "tm": [], "cli": ["daily-poetry"], "site": "https://tools.cli.jaden.tech/"}, "git-cloner": {"slug": "git-cloner", "title": "Git 仓库克隆器", "group": "开发", "class": "D", "class_label": "后端增强", "class_desc": "有同源后端调用，但带静态兜底：后端不可用时自动降级展示", "visibility": "public", "visibility_label": "公开", "description": "本地仓库克隆台账：列表、筛选、统计与 AI 摘要入口，支持 ?range=all 全量视图。", "scenario": "管理本地克隆台账：列出全部仓、按语言与范围筛选、看体积与最近提交——解决「同一仓跨目录重复克隆、旧仓忘了删」。", "url": "/git-cloner.html", "aliases": ["/cloner.html"], "web": [{"slug": "git-cloner", "title": "Git 仓库克隆器", "self": true, "url": "/git-cloner.html"}], "tm": [], "cli": ["git-cloner"], "site": "https://tools.cli.jaden.tech/"}, "web2md": {"slug": "web2md", "title": "微信文章转 Markdown", "group": "开发", "class": "D", "class_label": "后端增强", "class_desc": "有同源后端调用，但带静态兜底：后端不可用时自动降级展示", "visibility": "public", "visibility_label": "公开", "description": "微信文章转 Markdown 的本地台账：已处理清单、标签与关联计数、分栏原文预览。", "scenario": "把微信文章抓成 Markdown 存档，并保留已处理清单与标签——解决「收藏夹里文章失效、原文找不回」。", "url": "/web2md.html", "aliases": [], "web": [{"slug": "web2md", "title": "微信文章转 Markdown", "self": true, "url": "/web2md.html"}], "tm": ["web2md命令助手"], "cli": ["web2md"], "site": "https://tools.cli.jaden.tech/"}, "lock-screen": {"slug": "lock-screen", "title": "锁屏小组件示例", "group": "系统", "class": "C", "class_label": "共享资产", "class_desc": "依赖站点级共享资产目录（图标 / 字体 / 图片）", "visibility": "public", "visibility_label": "公开", "description": "iOS 锁屏小组件（Scriptable）效果示例：时钟、天气与今日诗歌同屏演示。", "scenario": "演示 iOS 锁屏小组件（Scriptable）效果：时钟、天气与今日诗歌同屏——解决「想试锁屏组件但不想先装一堆东西」。", "url": "/lock-screen.html", "aliases": ["/lockscreen.html"], "web": [{"slug": "lock-screen", "title": "锁屏小组件示例", "self": true, "url": "/lock-screen.html"}, {"slug": "daily-poetry", "title": "每日诗歌", "self": false, "url": "/daily-poetry.html"}], "tm": [], "cli": [], "site": "https://tools.cli.jaden.tech/"}};
 
 (function () {
   var PAGE_SIZE = 30;
@@ -139,6 +195,8 @@ var GROUPS = ["出行", "学习", "设计", "生活", "开发", "系统"];
   var COMPACT = (typeof COLUMNS_COMPACT !== 'undefined') ? COLUMNS_COMPACT : null;
   var DETAILS = (typeof DETAIL_DATA !== 'undefined') ? DETAIL_DATA : null;
   var MODE = 'browse', ACTIVE = '';
+  var SITE = (typeof PAGE_MODE !== 'undefined' && PAGE_MODE === 'site');
+  
 
   function activeCols() { return (MODE === 'detail' && COMPACT) ? COMPACT : COLUMNS; }
 
@@ -159,17 +217,7 @@ var GROUPS = ["出行", "学习", "设计", "生活", "开发", "系统"];
     if (col.wrap) td.className = 'wrap';
     if (col.ops) {
       td.className = 'ops-cell';
-      if (row.kind === 'cli') {                     /* 工具无页面：只给「复制命令」 */
-        var cp = kit('button', 'icon-btn', '⧉');
-        cp.title = '复制命令 ' + (row.command || '');
-        cp.onclick = function () {
-          if (navigator.clipboard) navigator.clipboard.writeText(row.command || '');
-          cp.textContent = '✓';
-          setTimeout(function () { cp.textContent = '⧉'; }, 1200);
-        };
-        td.appendChild(cp);
-        return td;
-      }
+      if (row.kind === 'cli' && typeof opsCli === 'function') return opsCli(td, row);
       if (row.local) td.appendChild(iconBtn('🖥', row.local, '本地访问 ' + row.local));
       if (row.url) td.appendChild(iconBtn('🌐', row.url, '线上访问 ' + row.url));
       return td;
@@ -259,7 +307,9 @@ var GROUPS = ["出行", "学习", "设计", "生活", "开发", "系统"];
     return li;
   }
 
-  function renderDetail(slug) {
+  
+
+  function renderDetailSite(slug) {
     var d = DETAILS[slug];
     var pane = document.getElementById('detailPane');
     if (!d || !pane) return;
@@ -267,23 +317,11 @@ var GROUPS = ["出行", "学习", "设计", "生活", "开发", "系统"];
 
     var head = kit('div', 'detail-head');
     head.appendChild(kit('h2', '', d.title));
-    head.appendChild(kit('span', 'badge badge-blue', d.class));
+    head.appendChild(kit('span', 'badge badge-blue', d.class + (d.class_label ? ' · ' + d.class_label : '')));
     head.appendChild(kit('span', 'badge badge-black', d.group));
-    if (d.visibility === 'private') head.appendChild(kit('span', 'badge badge-black', '私有'));
+    if (d.visibility_label) head.appendChild(kit('span', 'badge badge-black', d.visibility_label));
     var actions = kit('div', 'detail-actions');
-    if (d.kind === 'cli') {
-      var cp = kit('button', 'btn btn-ghost btn-sm', '⧉ 复制命令');
-      cp.onclick = function () {
-        var t = d.command;
-        if (navigator.clipboard) navigator.clipboard.writeText(t);
-        cp.textContent = '✓ 已复制';
-        setTimeout(function () { cp.textContent = '⧉ 复制命令'; }, 1200);
-      };
-      actions.appendChild(cp);
-    } else {
-      if (d.local) actions.appendChild(iconBtn('🖥', d.local, '本地访问 ' + d.local));
-      if (d.url) actions.appendChild(iconBtn('🌐', d.url, '线上访问 ' + d.url));
-    }
+    if (d.url) actions.appendChild(iconBtn('🌐', d.url, '打开 ' + d.url));
     var close = kit('button', 'detail-close', '← 列表');
     close.onclick = collapse;
     actions.appendChild(close);
@@ -298,54 +336,41 @@ var GROUPS = ["出行", "学习", "设计", "生活", "开发", "系统"];
     var b2 = block('关联工具');
     var ul = kit('ul', 'link-list');
     (d.web || []).forEach(function (w) {
-      ul.appendChild(line([{ tag: 'Web' }, { text: w.title + ' ' }, { link: w.local, text: w.self ? '（本页）' : w.url }]));
+      ul.appendChild(line([{ tag: 'Web' }, { text: w.title + ' ' },
+                           { link: w.url, text: w.self ? '（本页）' : w.url }]));
     });
     (d.cli || []).forEach(function (c) {
-      ul.appendChild(line([{ tag: 'CLI' }, { code: c.name },
-                           { text: c.aliases.length ? '（别名 ' + c.aliases.join(' / ') + '）' : '' },
-                           { sub: '脚本 ' + c.script }]));
+      ul.appendChild(line([{ tag: 'CLI' }, { code: (typeof c === 'string' ? c : c.name) }]));
     });
     (d.tm || []).forEach(function (t) {
-      ul.appendChild(line([{ tag: 'TM' }, { text: t.name }, { sub: t.path + ' · 安装：Tampermonkey → 添加新脚本，粘贴该文件内容' }]));
+      ul.appendChild(line([{ tag: 'TM' }, { text: (typeof t === 'string' ? t : t.name) }]));
     });
     if (!ul.children.length) ul.appendChild(line([{ text: '（无关联工具）' }]));
     b2.appendChild(ul);
     pane.appendChild(b2);
 
-    var b3 = block('解决方案 · 源码清单');
+    var b3 = block('形态与可见性');
     var ul2 = kit('ul', 'link-list');
-    (d.sources || []).forEach(function (s) {
-      ul2.appendChild(line([{ tag: s.kind }, { code: s.path }]));
-    });
+    ul2.appendChild(line([{ tag: '形态' }, { code: d.class }, { text: ' ' + (d.class_label || '') },
+                          { sub: d.class_desc || '' }]));
+    ul2.appendChild(line([{ tag: '可见性' }, { text: d.visibility_label || d.visibility }]));
     b3.appendChild(ul2);
     pane.appendChild(b3);
 
     var b4 = block('访问方式');
     var ul3 = kit('ul', 'link-list');
-    if (d.kind === 'cli') {
-      ul3.appendChild(line([{ tag: '命令' }, { code: d.command }]));
-      if (d.script) ul3.appendChild(line([{ tag: '脚本' }, { code: d.script }]));
-      ul3.appendChild(line([{ tag: '帮助' }, { code: 'pages-manager help' },
-                            { sub: '全局命令已装：~/.local/bin/pages-manager（别名 pages / tools-cli）' }]));
-      ul3.appendChild(line([{ tag: '文档' }, { link: 'pages-manager-changelog.html', text: '变更日志' },
-                            { text: ' · ' }, { link: 'pages-manager-features.html', text: '功能清单' }]));
-    } else {
-      ul3.appendChild(line([{ tag: '本地' }, { link: d.local, text: d.local }]));
-      ul3.appendChild(line([{ tag: '线上' }, { link: d.url, text: d.url }]));
-      (d.aliases || []).forEach(function (a) {
-        ul3.appendChild(line([{ tag: '别名' }, { link: a, text: a }]));
-      });
-      ul3.appendChild(line([{ tag: '启动' }, { code: 'hs .' }, { sub: '仓库根起服务；端口以 hs list 为准（不写死，避免与当前实例漂移）' }]));
-      ul3.appendChild(line([{ tag: 'dist' }, { code: d.dist }, { sub: '预览构建产物 cache/pages-dist' }]));
-    }
+    var abs = (d.site || '') + d.slug + '.html';
+    ul3.appendChild(line([{ tag: '线上' }, { link: abs, text: abs }]));
+    (d.aliases || []).forEach(function (a) {
+      ul3.appendChild(line([{ tag: '别名' }, { link: a, text: a }]));
+    });
+    ul3.appendChild(line([{ tag: '地址规范' }, { text: 'slug 即规范址；别名走静态跳转桩 → 规范址' }]));
     b4.appendChild(ul3);
     pane.appendChild(b4);
+  }
 
-    if (d.kind !== 'cli') {
-      var foot = block('站点');
-      foot.appendChild(kit('p', '', '线上站点 ' + d.site));
-      pane.appendChild(foot);
-    }
+  function renderDetail(slug) {
+    return renderDetailSite(slug);
   }
 
   function selectDetail(slug, silent) {
@@ -483,7 +508,151 @@ var GROUPS = ["出行", "学习", "设计", "生活", "开发", "系统"];
   init();
 })();
 
+var DOCS_DATA = {"mode": "site", "version": "1.1", "release_date": "2026-11-16", "page": {"version": "1.1", "date": "2026-11-16"}, "changelog": [{"ver": "1.1", "date": "2026-11-16", "kind": "发布", "summary": "首页改表格门户：点页名开右侧分栏详情（需求场景 / 关联工具 / 形态与可见性 / 访问方式），页脚版本行可打开「发布记录 / 页面清单 / 本站信息」抽屉；五列单行截断 + 悬停看全文。"}, {"ver": "1.0", "date": "2026-11-13", "kind": "发布", "summary": "站点上线：9 个页面统一为一级扁平地址（slug 即规范址），旧地址保留静态跳转桩；首页提供分组筛选、搜索与排序。"}], "features": [{"section": "出行", "items": ["高铁线路图 · D 形态 · 部分信息打码 — 高铁车次全程线路图：途经站点、购票区间高亮、时刻表与座位信息，数据来自 Supabase 只读表。"]}, {"section": "学习", "items": ["PMP ITTO 知识图谱 · B 形态 · 公开 — PMP 十大知识领域 × 五大过程组 × 49 子过程的 ITTO 关系图谱，备考速查。", "英语句型翻译助手 · A 形态 · 公开 — 英语句型与时态转换对照工具，覆盖常见语法的正误示例。"]}, {"section": "设计", "items": ["品牌配色体系 · A 形态 · 公开 — 品牌色板与配色组合速查，含色值、对比度与使用场景建议。", "朋友圈封面生成器 · A 形态 · 公开 — 生成微信朋友圈封面图（1080×1800），可导出为 PNG 直接使用。"]}, {"section": "生活", "items": ["每日诗歌 · B 形态 · 公开 — 每日一首诗：原文、注释与赏析，随构建快照发布。"]}, {"section": "开发", "items": ["Git 仓库克隆器 · D 形态 · 公开 — 本地仓库克隆台账：列表、筛选、统计与 AI 摘要入口，支持 ?range=all 全量视图。", "微信文章转 Markdown · D 形态 · 公开 — 微信文章转 Markdown 的本地台账：已处理清单、标签与关联计数、分栏原文预览。"]}, {"section": "系统", "items": ["锁屏小组件示例 · C 形态 · 公开 — iOS 锁屏小组件（Scriptable）效果示例：时钟、天气与今日诗歌同屏演示。"]}]};
+var STATE_DATA = {"mode": "site", "version": "1.1", "release_date": "2026-11-16", "page": {"version": "1.1", "date": "2026-11-16"}, "site": {"domain": "tools.cli.jaden.tech", "pages": 9, "groups": 6, "masked": 1, "class_dist": {"D": 3, "B": 2, "A": 3, "C": 1}, "releases": 2}, "builder": {"name": "pages-manager", "version": "1.12", "release_date": "2026-11-16"}};
+
+; /* ── 文档抽屉（§2-17：版本行入口 / 固定面板 / 内联数据 / 禁 fetch） ── */
+(function () {
+  var ov = document.getElementById('docsOverlay');
+  var body = document.getElementById('docsBody');
+  var sub = document.getElementById('docsSub');
+  var trig = document.getElementById('hfVersion');
+  if (!ov || !trig || !body) return;
+  var SITE = (typeof PAGE_MODE !== 'undefined' && PAGE_MODE === 'site');
+  var TAB_KEY = SITE ? 'site.docs.tab' : 'localnav.docs.tab';
+  var CUR = 'changelog';
+
+  function esc(s) {
+    return String(s === undefined || s === null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function curVer() {
+    var d = (typeof DOCS_DATA === 'object' && DOCS_DATA) || {};
+    return String((d.page && d.page.version) || d.version || '').replace(/^v/i, '');
+  }
+
+  function renderChangelog() {
+    var d = DOCS_DATA, cur = curVer();
+    var rows = (d.changelog || []).map(function (it) {
+      var on = String(it.ver || '').replace(/^v/i, '') === cur;
+      return '<div class="dp-item' + (on ? ' dp-current' : '') + '">' +
+        '<span class="dp-ver">' + esc(it.ver) + '</span>' +
+        '<span class="dp-date">' + esc(it.date) + '</span>' +
+        '<span class="dp-kind">' + esc(it.kind) + '</span>' +
+        '<span class="dp-sum">' + esc(it.summary) + '</span></div>';
+    }).join('');
+    return rows + (SITE
+      ? '<p class="dp-foot">发布记录真源 <code>data/site-releases.yaml</code>（构建期内联快照，运行时不请求网络）。</p>'
+      : '<p class="dp-foot">完整历史（独立静态页，no-JS / 分享兜底）：' +
+        '<a href="pages-manager-changelog.html">pages-manager-changelog.html</a></p>');
+  }
+
+  function renderFeatures() {
+    var d = DOCS_DATA;
+    var html = (d.features || []).map(function (sec) {
+      return '<section class="dp-sec"><h4>' + esc(sec.section) + '</h4><ul>' +
+        (sec.items || []).map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') +
+        '</ul></section>';
+    }).join('');
+    return html + (SITE
+      ? '<p class="dp-foot">按分组列出本站全部页面；点表格行可看单页详情与访问方式。</p>'
+      : '<p class="dp-foot">完整清单：<a href="pages-manager-features.html">pages-manager-features.html</a></p>');
+  }
+
+  function renderState() {
+    var s = STATE_DATA || {}, ver = s.version || '', page = s.page || {};
+    if (SITE) {
+      var st = s.site || {}, bd = s.builder || {}, sd = st.class_dist || {};
+      var kvS = [
+        ['站点版本', esc(ver) + (s.release_date ? '（' + esc(s.release_date) + '）' : '')],
+        ['页面', (st.pages || 0) + ' 个页面 · ' + (st.groups || 0) + ' 个分组 · 打码 ' + (st.masked || 0) + ' 个'],
+        ['形态分布', Object.keys(sd).sort().map(function (k) { return k + '×' + sd[k]; }).join(' ') ||
+          '<span class="dp-off">—</span>'],
+        ['访问方式', '页面 slug 即规范址 <code>/&lt;slug&gt;.html</code>；别名走静态跳转桩 → 规范址'],
+        ['构建器', esc(bd.name || '') + ' v' + esc(bd.version || '') + '（' + esc(bd.release_date || '') + '）'],
+        ['发布记录', (st.releases || 0) + ' 条 · 见「发布记录」页签']
+      ];
+      return '<dl class="dp-kv">' + kvS.map(function (r) {
+        return '<dt>' + esc(r[0]) + '</dt><dd>' + r[1] + '</dd>';
+      }).join('') + '</dl><p class="dp-foot">数据在构建期内联写入（§2-17）：页面不探测端口、不请求接口。</p>';
+    }
+    var same = String(page.version || '') === String(ver);
+    var docs = s.docs || {}, dist = s.dist || {}, man = s.manifest || {};
+    var cls = man.class_dist || {};
+    var distTxt = !dist.exists ? '<span class="dp-off">未构建（跑 pages-manager build）</span>'
+      : (dist.fresh ? '<span class="dp-ok">跟上页面源</span>（水印 ' + esc(dist.watermark_sha) + '）'
+                    : '<span class="dp-warn">落后于页面源</span>（水印 ' + esc(dist.watermark_sha) +
+                      ' 不含页面源最近提交 ' + esc(dist.source_sha) + '，重跑 build + publish）');
+    var docsTxt = docs.synced ? '<span class="dp-ok">已同步</span>' : '<span class="dp-warn">有漂移（跑 pages-manager docs）</span>';
+    var kv = [
+      ['版本一致性', same ? '<span class="dp-ok">一致</span>（' + esc(ver) + '）'
+                          : '<span class="dp-warn">不一致</span>（源码 ' + esc(ver) + ' / 页面 ' + esc(page.version) + '）'],
+      ['文档同步', docsTxt + ' · changelog ' + (docs.changelog_rows || 0) + ' 条 / features ' +
+        (docs.features_sections || 0) + ' 段'],
+      ['构建产物', distTxt],
+      ['清单', '公开 ' + (man.public || 0) + ' 页 · 私有 ' + (man.private || 0) + ' 项 · class ' +
+        Object.keys(cls).sort().map(function (k) { return k + '×' + cls[k]; }).join(' ')],
+      ['运行态', '<span class="dp-off">本页为静态文件，不探测端口</span> · 查服务请用 <code>hs list</code>']
+    ];
+    return '<dl class="dp-kv">' + kv.map(function (r) {
+      return '<dt>' + esc(r[0]) + '</dt><dd>' + r[1] + '</dd>';
+    }).join('') + '</dl><p class="dp-foot">数据快照由 <code>pages-manager localnav</code> 生成期写入（§2-17a：运行时事实不固化）。</p>';
+  }
+
+  function showTab(tab) {
+    CUR = (tab === 'features' || tab === 'state') ? tab : 'changelog';
+    Array.prototype.forEach.call(document.querySelectorAll('.dp-tab'), function (b) {
+      var on = b.getAttribute('data-tab') === CUR;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    body.innerHTML = CUR === 'features' ? renderFeatures() : (CUR === 'state' ? renderState() : renderChangelog());
+    body.scrollTop = 0;
+    sub.textContent = SITE
+      ? ('工具集 · v' + curVer() + ' · 页面 ' + ((DOCS_DATA.features || []).length) + ' 组 / ' +
+         ((DOCS_DATA.changelog || []).length) + ' 条发布记录')
+      : ('pages-manager · ' + curVer() + ' · changelog ' + ((DOCS_DATA.changelog || []).length) +
+         ' 条 / features ' + ((DOCS_DATA.features || []).length) + ' 段 · 快照 v' +
+         esc(((STATE_DATA.page || {}).version) || ''));
+    try { localStorage.setItem(TAB_KEY, CUR); } catch (e) {}
+  }
+
+  function openDrawer(tab) {
+    ov.classList.add('show');
+    document.body.style.overflow = 'hidden';
+    var remembered = null;
+    try { remembered = localStorage.getItem(TAB_KEY); } catch (e) {}
+    showTab(tab || remembered || 'changelog');
+    var first = ov.querySelector('.dp-tab.on') || ov.querySelector('.dp-tab');
+    if (first) first.focus();
+  }
+  function closeDrawer() {
+    ov.classList.remove('show');
+    document.body.style.overflow = '';
+    trig.focus();
+  }
+
+  trig.addEventListener('click', function (ev) { ev.preventDefault(); openDrawer(); });
+  trig.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); openDrawer(); }
+  });
+  document.getElementById('docsClose').addEventListener('click', closeDrawer);
+  ov.addEventListener('click', function (ev) { if (ev.target === ov) closeDrawer(); });
+  Array.prototype.forEach.call(document.querySelectorAll('.dp-tab'), function (b) {
+    b.addEventListener('click', function () { showTab(b.getAttribute('data-tab')); });
+  });
+  /* Esc 优先关抽屉（捕获阶段 + 阻断冒泡），避免连带收起右侧详情分栏 */
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape' && ov.classList.contains('show')) {
+      ev.stopPropagation(); closeDrawer();
+    }
+  }, true);
+  /* 深链 #docs=changelog|features|state */
+  var m = /(?:^|[#&])docs=([A-Za-z]+)/.exec(location.hash || '');
+  if (m) openDrawer(m[1]);
+})();
+
 </script>
-<!-- build: index @ script-miner 3513f6c9 2026-11-16 19:15 -->
+<!-- build: index @ script-miner 49de984f 2026-11-17 12:42 -->
 </body>
 </html>
