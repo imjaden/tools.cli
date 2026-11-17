@@ -499,7 +499,7 @@ body:not(.show-toolbar) .github-corner, body:not(.show-toolbar) .github-corner-h
   <div class="doc-main" id="docMain">
     <div class="doc-header">
       <h1>tools.cli.jaden.tech 站点主题文档（两仓一源 · 页面发布 · 公开面纪律）</h1>
-      <div class="meta">创建: 2026-11-17 15:59 · 编辑: 2026-11-17 15:59<br>字数: 2,086 · 阅读约 6 分钟<span class="meta-path"> · 路径: <code>tools-cli-site-summary-v1.0-20261117.md</code></span></div>
+      <div class="meta">创建: 2026-11-17 17:19 · 编辑: 2026-11-17 17:19<br>字数: 2,127 · 阅读约 7 分钟<span class="meta-path"> · 路径: <code>tools-cli-site-summary-v1.0-20261117.md</code></span></div>
     </div>
     <div class="doc-body" id="docBody"><blockquote>一句话：tools.cli.jaden.tech 是「个人工具集」的公开门面，内容全部由私有仓 script-miner 的构建器</blockquote>
 <blockquote>pages-manager 生成，产物仓 imjaden/tools.cli 只是它的镜像。</blockquote>
@@ -522,18 +522,18 @@ body:not(.show-toolbar) .github-corner, body:not(.show-toolbar) .github-corner-h
 </tr>
 <tr>
 <td>站点版本</td>
-<td>v1.2（2026-11-17，真源 = 清单 <code>site.version</code>）</td>
+<td>v1.3（2026-11-17，真源 = 清单 <code>site.version</code>）</td>
 </tr>
 <tr>
 <td>页面规模</td>
-<td>10 个公开页面 · 1 个私有工具（不发布） · 形态分布 A×4 B×2 C×1 D×3</td>
+<td>11 个公开页面 · 1 个私有工具（不发布） · 形态分布 A×5 B×2 C×1 D×3</td>
 </tr>
 <tr>
 <td>体积基线</td>
 <td>首页 43.7 KB（gzip 12.6 KB） · 本地导航 59.8 KB</td>
 </tr>
 </tbody></table>
-<h2 id="2-页面清单-10-页-真源为清单文件">2. 页面清单（10 页，真源为清单文件）</h2>
+<h2 id="2-页面清单-11-页-真源为清单文件">2. 页面清单（11 页，真源为清单文件）</h2>
 <table><thead><tr>
 <th>规范址</th>
 <th>名称</th>
@@ -633,6 +633,15 @@ body:not(.show-toolbar) .github-corner, body:not(.show-toolbar) .github-corner-h
 <td>/docs.html</td>
 <td>就是本页：站点定位、页面清单、URL 规范、发布流程与公开面纪律。</td>
 </tr>
+<tr>
+<td><code>/status.html</code></td>
+<td>站点状态</td>
+<td>关于</td>
+<td>A</td>
+<td>public</td>
+<td>/health.html</td>
+<td>逐页可访问性、构建链健康与 90 天可用率（数据来自每日两次探测快照）。</td>
+</tr>
 </tbody></table>
 <p>私有工具（只进本地导航，公网 404）：<code>pages-manager</code>（别名 <code>pages</code> / <code>tools-cli</code>）</p>
 <h2 id="3-url-与路由规范">3. URL 与路由规范</h2>
@@ -685,7 +694,7 @@ body:not(.show-toolbar) .github-corner, body:not(.show-toolbar) .github-corner-h
 </ul>
 <p>  <code>#p=&lt;slug&gt;</code> 深链；<code>← 列表</code> / Esc / 再点页名退出；&lt;1024px 详情单列覆盖。</p>
 <ul>
-<li><strong>站点档案抽屉</strong>：页脚版本行 <code>工具集 · v1.2(20261117)</code> 点开（§2-17：面板固定 60vw×90vh、</li>
+<li><strong>站点档案抽屉</strong>：页脚版本行 <code>工具集 · v1.3(20261117)</code> 点开（§2-17：面板固定 60vw×90vh、</li>
 </ul>
 <p>  内容区独立滚动、数据内联禁 fetch、Esc / 遮罩 / ✕ 三路关闭）——三 tab：📜 发布记录（真源</p>
 <p>  <code>发布记录数据</code>） / 📋 页面清单（按分组） / ℹ️ 本站信息（版本 · 统计 · 形态分布 · 构建器）。</p>
@@ -1067,6 +1076,6 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://tools.cli.jaden.tech/pages-man
   })();
 })();
 </script>
-<!-- build: site-docs @ script-miner 2bf7d1c0 2026-11-17 16:04 -->
+<!-- build: site-docs @ script-miner ff6095a1 2026-11-17 17:26 -->
 </body>
 </html>
