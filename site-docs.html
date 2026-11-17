@@ -499,10 +499,10 @@ body:not(.show-toolbar) .github-corner, body:not(.show-toolbar) .github-corner-h
   <div class="doc-main" id="docMain">
     <div class="doc-header">
       <h1>tools.cli.jaden.tech 站点主题文档（两仓一源 · 页面发布 · 公开面纪律）</h1>
-      <div class="meta">创建: 2026-11-17 15:56 · 编辑: 2026-11-17 15:56<br>字数: 2,081 · 阅读约 6 分钟<span class="meta-path"> · 路径: <code>tools-cli-site-summary-v1.0-20261117.md</code></span></div>
+      <div class="meta">创建: 2026-11-17 15:59 · 编辑: 2026-11-17 15:59<br>字数: 2,086 · 阅读约 6 分钟<span class="meta-path"> · 路径: <code>tools-cli-site-summary-v1.0-20261117.md</code></span></div>
     </div>
-    <div class="doc-body" id="docBody"><blockquote>一句话：**tools.cli.jaden.tech 是「个人工具集」的公开门面，内容全部由私有仓 script-miner 的构建器</blockquote>
-<blockquote>pages-manager 生成，产物仓 imjaden/tools.cli 只是它的镜像。**</blockquote>
+    <div class="doc-body" id="docBody"><blockquote>一句话：tools.cli.jaden.tech 是「个人工具集」的公开门面，内容全部由私有仓 script-miner 的构建器</blockquote>
+<blockquote>pages-manager 生成，产物仓 imjaden/tools.cli 只是它的镜像。</blockquote>
 <h2 id="1-站点与两仓">1. 站点与两仓</h2>
 <table><thead><tr>
 <th>项</th>
@@ -533,7 +533,7 @@ body:not(.show-toolbar) .github-corner, body:not(.show-toolbar) .github-corner-h
 <td>首页 43.7 KB（gzip 12.6 KB） · 本地导航 59.8 KB</td>
 </tr>
 </tbody></table>
-<h2 id="2-页面清单-10-页-真源-data-pages-manifest-yaml">2. 页面清单（10 页，真源 `页面清单`）</h2>
+<h2 id="2-页面清单-10-页-真源为清单文件">2. 页面清单（10 页，真源为清单文件）</h2>
 <table><thead><tr>
 <th>规范址</th>
 <th>名称</th>
@@ -698,7 +698,7 @@ body:not(.show-toolbar) .github-corner, body:not(.show-toolbar) .github-corner-h
 <p><strong>必须不含</strong>（正则）：本机绝对路径、内仓目录路径、构建产物目录、本地起服务命令、<code>CL</code> + 两位以上数字、私有工具复制入口、本地 favicon 兜底。</p>
 <p>机制：本地专用代码包在 <code>/<em>__LOCAL_ONLY_START__</em>/ … /<em>__LOCAL_ONLY_END__</em>/</code> 之间，门户构建时</p>
 <p><code>_strip_local_only()</code> 整段剥离并把详情分发器收敛为只调 <code>renderDetailSite()</code>。</p>
-<h2 id="7-构建器-pages-manager-能力矩阵">7. 构建器 `pages-manager` 能力矩阵</h2>
+<h2 id="7-构建器-pages-manager-能力矩阵">7. 构建器 pages-manager 能力矩阵</h2>
 <table><thead><tr>
 <th>子指令</th>
 <th>作用</th>
@@ -740,7 +740,7 @@ body:not(.show-toolbar) .github-corner, body:not(.show-toolbar) .github-corner-h
 <td>—</td>
 </tr>
 </tbody></table>
-<h2 id="8-发布-sop-判据与时序详见-pages-spec-v1-2-20261116-md-9">8. 发布 SOP（判据与时序详见 `发布规范` §9）</h2>
+<h2 id="8-发布-sop-判据与时序详见主仓发布规范-9">8. 发布 SOP（判据与时序详见主仓发布规范 §9）</h2>
 <pre><code class="language-bash">git commit --only -- &lt;paths&gt;                           # 源仓先提交（水印要用这个 SHA）
 python3 pages-manager build  --json      # 水印 = HEAD，内置 gitleaks
 python3 pages-manager verify --json
@@ -1067,6 +1067,6 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://tools.cli.jaden.tech/pages-man
   })();
 })();
 </script>
-<!-- build: site-docs @ script-miner 3be39048 2026-11-17 15:57 -->
+<!-- build: site-docs @ script-miner aa5a480e 2026-11-17 15:59 -->
 </body>
 </html>
