@@ -528,7 +528,7 @@ var DETAIL_DATA = {"train-map": {"slug": "train-map", "title": "高铁线路图"
 })();
 
 var DOCS_DATA = {"mode": "site", "version": "1.3", "release_date": "2026-11-17", "page": {"version": "1.3", "date": "2026-11-17"}, "changelog": [{"ver": "1.3", "date": "2026-11-17", "kind": "发布", "summary": "新增「站点状态」页（/status.html，别名 /health.html）：逐页可访问性、构建链健康与 90 天可用率，数据来自每日两次探测快照。"}, {"ver": "1.3", "date": "2026-11-17", "kind": "发布", "summary": "页面分栏详情新增「添加新车次流程」：12306 高铁线路图详情节列出从插件导出票面到发布上线的 5 步骨架（只写步骤与工具名，不落私有命令）；仓内本地导航保留带命令的完整版。"}, {"ver": "1.2", "date": "2026-11-17", "kind": "发布", "summary": "新增「站点说明」页（/site-docs.html，别名 /docs.html）：本站定位、页面清单、URL 规范、发布流程与公开面纪律，可直接在线阅读。"}, {"ver": "1.1", "date": "2026-11-16", "kind": "发布", "summary": "首页改表格门户：点页名开右侧分栏详情（需求场景 / 关联工具 / 形态与可见性 / 访问方式），页脚版本行可打开「发布记录 / 页面清单 / 本站信息」抽屉；五列单行截断 + 悬停看全文。"}, {"ver": "1.0", "date": "2026-11-13", "kind": "发布", "summary": "站点上线：9 个页面统一为一级扁平地址（slug 即规范址），旧地址保留静态跳转桩；首页提供分组筛选、搜索与排序。"}], "features": [{"section": "出行", "items": ["高铁线路图 · D 形态 · 部分信息打码 — 高铁车次全程线路图：途经站点、购票区间高亮、时刻表与座位信息，数据来自 Supabase 只读表。"]}, {"section": "学习", "items": ["PMP ITTO 知识图谱 · B 形态 · 公开 — PMP 十大知识领域 × 五大过程组 × 49 子过程的 ITTO 关系图谱，备考速查。", "英语句型翻译助手 · A 形态 · 公开 — 英语句型与时态转换对照工具，覆盖常见语法的正误示例。"]}, {"section": "设计", "items": ["品牌配色体系 · A 形态 · 公开 — 品牌色板与配色组合速查，含色值、对比度与使用场景建议。", "朋友圈封面生成器 · A 形态 · 公开 — 生成微信朋友圈封面图（1080×1800），可导出为 PNG 直接使用。"]}, {"section": "生活", "items": ["每日诗歌 · B 形态 · 公开 — 每日一首诗：原文、注释与赏析，随构建快照发布。"]}, {"section": "开发", "items": ["Git 仓库克隆器 · D 形态 · 公开 — 本地仓库克隆台账：列表、筛选、统计与 AI 摘要入口，支持 ?range=all 全量视图。", "微信文章转 Markdown · D 形态 · 公开 — 微信文章转 Markdown 的本地台账：已处理清单、标签与关联计数、分栏原文预览。"]}, {"section": "系统", "items": ["锁屏小组件示例 · C 形态 · 公开 — iOS 锁屏小组件（Scriptable）效果示例：时钟、天气与今日诗歌同屏演示。"]}, {"section": "关于", "items": ["站点状态 · A 形态 · 公开 — 工具页面可访问性与更新时效状态页：逐页探测、构建链健康、90 天可用率与事件。", "站点说明 · A 形态 · 公开 — 本站定位、页面清单、URL 规范、发布流程与公开面纪律，随构建快照发布。"]}]};
-var STATE_DATA = {"mode": "site", "version": "1.3", "release_date": "2026-11-17", "page": {"version": "1.3", "date": "2026-11-17"}, "site": {"domain": "tools.cli.jaden.tech", "pages": 11, "groups": 7, "masked": 1, "class_dist": {"D": 3, "B": 2, "A": 5, "C": 1}, "releases": 5}, "builder": {"name": "pages-manager", "version": "1.18", "release_date": "2026-11-19"}};
+var STATE_DATA = {"mode": "site", "version": "1.3", "release_date": "2026-11-17", "page": {"version": "1.3", "date": "2026-11-17"}, "site": {"domain": "tools.cli.jaden.tech", "pages": 11, "groups": 7, "masked": 1, "class_dist": {"D": 3, "B": 2, "A": 5, "C": 1}, "releases": 5}, "builder": {"name": "pages-manager", "version": "1.19", "release_date": "2026-11-20"}};
 
 ; /* ── 文档抽屉（§2-17：版本行入口 / 固定面板 / 内联数据 / 禁 fetch） ── */
 (function () {
@@ -563,7 +563,7 @@ var STATE_DATA = {"mode": "site", "version": "1.3", "release_date": "2026-11-17"
     return rows + (SITE
       ? '<p class="dp-foot">发布记录真源 <code>data/site-releases.yaml</code>（构建期内联快照，运行时不请求网络）。</p>'
       : '<p class="dp-foot">完整历史（独立静态页，no-JS / 分享兜底）：' +
-        '<a href="pages-manager-changelog.html">pages-manager-changelog.html</a></p>');
+        '<a href="' + esc(typeof DOCS_HREF === 'string' ? DOCS_HREF : '') + 'pages-manager-changelog.html">pages-manager-changelog.html</a></p>');
   }
 
   function renderFeatures() {
@@ -575,7 +575,7 @@ var STATE_DATA = {"mode": "site", "version": "1.3", "release_date": "2026-11-17"
     }).join('');
     return html + (SITE
       ? '<p class="dp-foot">按分组列出本站全部页面；点表格行可看单页详情与访问方式。</p>'
-      : '<p class="dp-foot">完整清单：<a href="pages-manager-features.html">pages-manager-features.html</a></p>');
+      : '<p class="dp-foot">完整清单：<a href="' + esc(typeof DOCS_HREF === 'string' ? DOCS_HREF : '') + 'pages-manager-features.html">pages-manager-features.html</a></p>');
   }
 
   function renderState() {
@@ -672,6 +672,6 @@ var STATE_DATA = {"mode": "site", "version": "1.3", "release_date": "2026-11-17"
 })();
 
 </script>
-<!-- build: index @ script-miner 34df1d81 2026-11-20 17:34 -->
+<!-- build: index @ script-miner 075d956a 2026-11-20 17:42 -->
 </body>
 </html>

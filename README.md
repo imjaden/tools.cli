@@ -4,7 +4,7 @@
 直接在本仓改页面**会在下次构建时被覆盖**；要改内容请改源码仓的源页或 `data/pages-manifest.yaml`。
 
 - 线上站点：https://tools.cli.jaden.tech/
-- 构建器：`python3 efficiency/pages-manager.py build` → `publish --push`（源码仓内）
+- 构建器：`python3 projects/pages-manager/pages-manager.py build` → `publish --push`（源码仓内）
 - 手工只碰：`CNAME` / `.nojekyll` / 本 `README.md`（其余文件都是产物）
 - 回滚：`git revert <site@build 提交>` 后 push，GitHub Pages 自动重建
 
