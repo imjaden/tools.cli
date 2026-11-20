@@ -26,6 +26,14 @@ Sublime Text
 - Command + k, Command + j 展示所有函数代码
 
 Version
+- v2.0.11@2026/11/20
+  1. 移动端车次分组复选框右边距归零，分组标题固定单行并以省略号截断，为复选框和展开按钮预留空间
+  2. 移动端购票徽标 padding 紧凑为 18px 2px 8px 2px；标题/路线单行截断并局部避让 36px 操作按钮，其余内容恢复全宽
+  3. 移动端车次列表行 padding 调整为 12px 2px，车次号/发车时间固定，路线与历时在 flex 容器内单行省略；桌面端规则不变
+- v2.0.10@2026/11/19
+  1. 移动端时刻表与购票徽标各占半屏并预留中缝，时刻表仅展示「站次 / 车站 / 到达」，车次分组 colspan 随视口同步 3/5 列
+  2. 切换车次左侧新增半透明按钮（仅移动端），时刻表在 60% / 100% 间切换；状态仅本页会话保留，导出 PNG 临时恢复不透明
+  3. 地图控件收起按钮改向下箭头、恢复入口改图层图标；收起控件时同步隐藏图例，图例重建后保持当前折叠状态
 - v2.0.9@2026/11/17
   1. 时刻表面板折叠改为「整块收起」：点 header 箭头后整个面板消失，只在右上角留 1 个圆形列表按钮（fa-list），点它恢复面板（原「只折表格内容」语义取消）
   2. 购票段面板标题（车次号）也能点：展开态点标题即收起为小球，与右上角收起按钮同义；收起态点小球恢复
@@ -559,7 +567,9 @@ Version
             overflow: hidden;
             display: flex;
             flex-direction: column;
+            transition: opacity 0.15s ease;
         }
+        #timetable-opacity-btn { display: none; }
         
         .timetable-header {
             padding: 12px 16px;
@@ -576,6 +586,7 @@ Version
             display: flex;
             align-items: center;
             gap: 8px;
+            min-width: 0;
         }
         
         .timetable-header .train-no {
@@ -839,7 +850,14 @@ Version
         @media (max-width: 768px) {
             .purchased-badge .pb-actions { top: 4px; right: 4px; gap: 6px; }
             .purchased-badge .pb-actions button { width: 36px; height: 36px; font-size: 15px; }
-            .purchased-badge { padding-right: 88px; }
+            .purchased-badge { padding-right: 2px; }
+            .purchased-badge .pb-title,
+            .purchased-badge .pb-route {
+                padding-right: 82px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
             .purchased-badge.is-collapsed { width: 40px; height: 40px; padding: 0; }
         }
 
@@ -855,6 +873,7 @@ Version
             box-shadow: 0 1px 6px rgba(0,0,0,0.2);
             line-height: 1.8;
         }
+        #map-legend.is-collapsed { display: none; }
         #map-legend .lg-dot {
             display: inline-block;
             width: 12px;
@@ -932,21 +951,68 @@ Version
         
         @media (max-width: 768px) {
             .timetable-panel {
-                width: 280px;
+                width: min(280px, calc(50vw - 12px));
                 max-height: 70vh;
                 top: 5px;
                 right: 5px;
             }
+            #purchased-badges { max-width: calc(50vw - 12px); }
+            .purchased-badge {
+                box-sizing: border-box;
+                overflow-wrap: anywhere;
+                padding: 18px 2px 8px 2px;
+            }
+            .timetable-panel.is-translucent { opacity: 0.6; }
+            body.is-exporting .timetable-panel.is-translucent { opacity: 1; transition: none; }
+            #timetable-opacity-btn { display: flex; }
 
+            .timetable-header { padding: 8px; flex-wrap: wrap; row-gap: 4px; }
+            .timetable-header-left { flex: 1 1 30px; gap: 4px; }
+            .timetable-header .train-no {
+                font-size: 16px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .timetable-header .train-date { display: none; }
+            .timetable-header-right { gap: 2px; margin-left: auto; }
             .header-btn { width: 36px; height: 36px; font-size: 16px; }
             
             .timetable-table {
                 font-size: 12px;
+                table-layout: fixed;
             }
-            
+            .timetable-table .col-departure,
+            .timetable-table .col-stop { display: none; }
+            .timetable-table .col-order { width: 18%; }
+            .timetable-table .col-station { width: 52%; }
+            .timetable-table .col-arrival { width: 30%; }
             .timetable-table th,
             .timetable-table td {
-                padding: 6px 8px;
+                padding: 6px 4px;
+            }
+            .timetable-table .station-name { white-space: normal; overflow-wrap: anywhere; }
+            .timetable-table .time { white-space: nowrap; }
+
+            .train-section-checkbox { margin-right: 0; }
+            .train-section-title {
+                display: inline-block;
+                max-width: calc(100% - 52px);
+                padding-right: 0;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                vertical-align: middle;
+            }
+
+            .train-item { padding: 12px 2px; }
+            .train-item-info { min-width: 0; }
+            .train-item-no, .train-item-time { flex-shrink: 0; }
+            .train-item-route {
+                min-width: 0;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
             }
         }
     </style>
@@ -979,6 +1045,9 @@ Version
                 <span class="train-date" id="timetable-train-date">2026-05-25</span>
             </div>
             <div class="timetable-header-right">
+                <button class="header-btn" id="timetable-opacity-btn" type="button" title="时刻表半透明" aria-label="时刻表半透明" aria-pressed="false">
+                    <i class="fas fa-adjust" aria-hidden="true"></i>
+                </button>
                 <button class="header-btn" id="switch-train-btn" type="button" title="切换车次" aria-label="切换车次">
                     <i class="fas fa-exchange-alt"></i>
                 </button>
@@ -991,11 +1060,11 @@ Version
             <table class="timetable-table">
                 <thead>
                     <tr>
-                        <th>站次</th>
-                        <th>车站</th>
-                        <th>到达</th>
-                        <th>发车</th>
-                        <th>停留</th>
+                        <th class="col-order">站次</th>
+                        <th class="col-station">车站</th>
+                        <th class="col-arrival">到达</th>
+                        <th class="col-departure">发车</th>
+                        <th class="col-stop">停留</th>
                     </tr>
                 </thead>
                 <tbody id="timetable-tbody">
@@ -1008,8 +1077,8 @@ Version
     <button class="launcher-btn" id="timetable-launcher" type="button" title="展开时刻表" aria-label="展开时刻表">
         <i class="fas fa-list"></i>
     </button>
-    <button class="launcher-btn" id="zoom-launcher" type="button" title="展开地图控件" aria-label="展开地图控件">
-        <i class="fas fa-list"></i>
+    <button class="launcher-btn" id="zoom-launcher" type="button" title="展开地图控件与图例" aria-label="展开地图控件与图例" aria-controls="map-zoom-controls map-legend" aria-expanded="false">
+        <i class="fas fa-layer-group"></i>
     </button>
     
     <div id="train-list-modal" class="train-list-modal">
@@ -1338,6 +1407,7 @@ Version
                 }, 'image/png');
             };
             if (btn) btn.disabled = true;
+            document.body.classList.add('is-exporting');
             try {
                 save(await html2canvas(document.body, opts));
             } catch (e) {
@@ -1355,6 +1425,7 @@ Version
                     pane.style.display = prev;
                 }
             } finally {
+                document.body.classList.remove('is-exporting');
                 if (btn) btn.disabled = false;
             }
         }
@@ -2004,6 +2075,14 @@ Version
         // ============================================================
         // 【5】渲染时刻表面板
         // ============================================================
+        const mobileTimetableMedia = window.matchMedia('(max-width: 768px)');
+
+        function syncTimetableColumns() {
+            document.querySelectorAll('.train-section-header td').forEach((cell) => {
+                cell.colSpan = mobileTimetableMedia.matches ? 3 : 5;
+            });
+        }
+
         function renderTimetable(trainDataList, segmentOrSegments = null) {
             const trainNoEl = document.getElementById('timetable-train-no');
             const trainDateEl = document.getElementById('timetable-train-date');
@@ -2071,16 +2150,17 @@ Version
                     const stopTime = station.stopTime || '-';
                     
                     row.innerHTML = `
-                        <td>${station.stationNo}</td>
-                        <td class="station-name">${station.stationName}</td>
-                        <td class="time">${arrivalTime}</td>
-                        <td class="time">${departureTime}</td>
-                        <td class="stop-time">${stopTime}</td>
+                        <td class="col-order">${station.stationNo}</td>
+                        <td class="station-name col-station">${station.stationName}</td>
+                        <td class="time col-arrival">${arrivalTime}</td>
+                        <td class="time col-departure">${departureTime}</td>
+                        <td class="stop-time col-stop">${stopTime}</td>
                     `;
                     
                     tbody.appendChild(row);
                 });
             });
+            syncTimetableColumns();
         }
 
         /** 线上行程页基址：复制文本里的链接固定指线上，本地/线上口径一致 */
@@ -2449,6 +2529,7 @@ Version
             }
             legend.innerHTML = html;
             mapContainer.appendChild(legend);
+            syncLegendCollapsed();
         }
         
         // ============================================================
@@ -2541,14 +2622,36 @@ Version
             setTimetableCollapsed(!document.getElementById('timetable-panel').classList.contains('is-collapsed'));
         }
 
+        let timetablePanelTranslucent = false;
+
+        function setTimetableTranslucent(translucent) {
+            timetablePanelTranslucent = !!translucent;
+            const panel = document.getElementById('timetable-panel');
+            const button = document.getElementById('timetable-opacity-btn');
+            if (panel) panel.classList.toggle('is-translucent', timetablePanelTranslucent);
+            if (button) {
+                button.setAttribute('aria-pressed', String(timetablePanelTranslucent));
+                button.setAttribute('aria-label', timetablePanelTranslucent ? '恢复时刻表不透明' : '时刻表半透明');
+                button.title = timetablePanelTranslucent ? '恢复时刻表不透明' : '时刻表半透明';
+            }
+        }
+
         /**
-         * 【5.4】绑定顶栏右侧按钮（切换车次）
+         * 【5.4】绑定顶栏右侧按钮（半透明 + 切换车次）
          * @description header 整条带 onclick="toggleTimetable()"，所以切换车次必须
          *              stopPropagation，否则点「切换车次」会连带把时刻表折叠起来。
          *              注意：折叠箭头本身**不能** stopPropagation —— 它靠冒泡到 header 的
          *              onclick 才能折叠（给它加 e.stopPropagation() 会让折叠按钮失效）。
          */
         function bindHeaderButtons() {
+            const opacityBtn = document.getElementById('timetable-opacity-btn');
+            if (opacityBtn) {
+                opacityBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    setTimetableTranslucent(!timetablePanelTranslucent);
+                });
+            }
             const switchBtn = document.getElementById('switch-train-btn');
             if (switchBtn) {
                 switchBtn.addEventListener('click', (e) => {
@@ -2592,7 +2695,18 @@ Version
             zoomPanelCollapsed = !!collapsed;
             if (zoomControlEl) zoomControlEl.classList.toggle('is-collapsed', zoomPanelCollapsed);
             const launcher = document.getElementById('zoom-launcher');
-            if (launcher) launcher.classList.toggle('is-shown', zoomPanelCollapsed);
+            if (launcher) {
+                launcher.classList.toggle('is-shown', zoomPanelCollapsed);
+                launcher.setAttribute('aria-expanded', String(!zoomPanelCollapsed));
+            }
+            const collapseButton = zoomControlEl ? zoomControlEl.querySelector('.zoom-collapse') : null;
+            if (collapseButton) collapseButton.setAttribute('aria-expanded', String(!zoomPanelCollapsed));
+            syncLegendCollapsed();
+        }
+
+        function syncLegendCollapsed() {
+            const legend = document.getElementById('map-legend');
+            if (legend) legend.classList.toggle('is-collapsed', zoomPanelCollapsed);
         }
 
         // ============================================================
@@ -2623,6 +2737,7 @@ Version
             const customZoomControl = L.control({position: 'bottomright'});
             customZoomControl.onAdd = function(map) {
                 const container = L.DomUtil.create('div', 'leaflet-control-custom-zoom');
+                container.id = 'map-zoom-controls';
                 
                 // 栈首：返回门户首页（原「切换车次」位置；切换车次已迁到时刻表 header 右侧）
                 const homeBtn = L.DomUtil.create('button', 'switch-btn home-btn', container);
@@ -2630,11 +2745,13 @@ Version
                 homeBtn.title = '返回门户首页';
                 homeBtn.setAttribute('aria-label', '返回门户首页');
 
-                // 第一行第二格：收起整个控件区（v2.0.9，双列布局）
+                // 第一行第二格：收起整个控件区与图例（v2.0.10，双列布局）
                 const collapseBtn = L.DomUtil.create('button', 'switch-btn zoom-collapse', container);
-                collapseBtn.innerHTML = '<i class="fas fa-list"></i>';
-                collapseBtn.title = '收起地图控件';
-                collapseBtn.setAttribute('aria-label', '收起地图控件');
+                collapseBtn.innerHTML = '<i class="fas fa-chevron-down"></i>';
+                collapseBtn.title = '收起地图控件与图例';
+                collapseBtn.setAttribute('aria-label', '收起地图控件与图例');
+                collapseBtn.setAttribute('aria-controls', 'map-zoom-controls map-legend');
+                collapseBtn.setAttribute('aria-expanded', 'true');
 
                 const zoomInBtn = L.DomUtil.create('button', 'zoom-btn zoom-btn-zoom-in', container);
                 zoomInBtn.innerHTML = '+';
@@ -2969,6 +3086,8 @@ Version
                 initMap();
                 bindHeaderButtons();
                 bindLaunchers();
+                mobileTimetableMedia.addEventListener('change', syncTimetableColumns);
+                syncTimetableColumns();
                 
                 const loadSuccess = await fetchTrainData();
                 if (!loadSuccess) {
@@ -2997,6 +3116,6 @@ Version
          */
         document.addEventListener('DOMContentLoaded', main);
     </script>
-<!-- build: train-map @ script-miner f46300f1 2026-11-19 22:39 -->
+<!-- build: train-map @ script-miner 0b53b421 2026-11-20 09:39 -->
 </body>
 </html>
