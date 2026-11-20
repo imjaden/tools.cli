@@ -1,5 +1,5 @@
 // git-cloner 数据文件 —— 生成物，勿手改（页面 git-cloner.html 为源码框架）
-// 生成: git-cloner browser --cache (v1.21)
+// 生成: git-cloner browser --cache (v1.22)
 // 口径: 等价 `git-cloner list --json --range=all`（页面口径 --limit=1000）
 window.GIT_CLONER_DATA = {
   "items": [
@@ -447,6 +447,6 @@ window.GIT_CLONER_DATA = {
   ],
   "stats": {
     "total": 49,
-    "updated_at": "2026-11-20 19:17:59"
+    "updated_at": "2026-11-20 21:39:08"
   }
 };
