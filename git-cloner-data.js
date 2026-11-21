@@ -4,6 +4,15 @@
 window.GIT_CLONER_DATA = {
   "items": [
     {
+      "label": "humanlayer-skills",
+      "path": "~/CodeSpace/git-cloner/humanlayer-skills",
+      "github": "https://github.com/humanlayer/skills",
+      "size": "107KB",
+      "time": "2026-11-20T21:49",
+      "tags": [],
+      "articles_count": 0
+    },
+    {
       "label": "julienXX-terminal-notifier",
       "path": "~/CodeSpace/git-cloner/julienXX-terminal-notifier",
       "github": "https://github.com/julienXX/terminal-notifier",
@@ -90,15 +99,6 @@ window.GIT_CLONER_DATA = {
       "github": "https://github.com/Joooook/12306-skill",
       "size": "7KB",
       "time": "2026-08-19T09:52",
-      "tags": [],
-      "articles_count": 0
-    },
-    {
-      "label": "humanlayer-skills",
-      "path": "~/CodeSpace/git-cloner/humanlayer-skills",
-      "github": "https://github.com/humanlayer/skills",
-      "size": "38KB",
-      "time": "2026-08-18T15:44",
       "tags": [],
       "articles_count": 0
     },
@@ -447,6 +447,6 @@ window.GIT_CLONER_DATA = {
   ],
   "stats": {
     "total": 49,
-    "updated_at": "2026-11-20 21:39:08"
+    "updated_at": "2026-11-20 21:49:14"
   }
 };
