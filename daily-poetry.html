@@ -418,6 +418,26 @@
             }
         }
     </style>
+    <!-- CL326 / v1.7：返回首页按钮（内建，替代站点 site_chrome.py 的部署后注入）
+         样式与站点真源 scripts/chrome_assets.py 的 HOME_CSS 同源；站点 S28 断言守着
+         「.jt-home 元素数 == 1 + box-sizing: border-box + 40×40」⇒ 改尺寸/定位前先看那份断言。 -->
+    <style>
+/* 右侧垂直居中的「返回首页」悬浮按钮（chrome_assets，双页共用同一份） */
+.jt-home {
+  position: fixed; right: 10px; top: 50%; transform: translateY(-50%); z-index: 999;
+  width: 40px; height: 40px; box-sizing: border-box; display: flex; align-items: center; justify-content: center;
+  border-radius: 12px; color: #fff; text-decoration: none;
+  background: rgba(8, 12, 20, .55); border: 1px solid rgba(255, 255, 255, .22);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .28);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  transition: background .18s ease, border-color .18s ease, transform .18s ease;
+}
+.jt-home:hover { background: rgba(12, 18, 30, .72); border-color: rgba(255, 255, 255, .45);
+  transform: translateY(-50%) scale(1.05); }
+.jt-home:focus-visible { outline: 2px solid #9ecbff; outline-offset: 2px; }
+@media (max-width: 600px) { .jt-home { right: 10px; width: 40px; height: 40px; border-radius: 10px; } }
+@media (prefers-reduced-motion: reduce) { .jt-home { transition: none; } }
+    </style>
 
     <link rel="canonical" href="https://tools.cli.jaden.tech/daily-poetry.html">
     <link rel="icon" href="https://www.jaden.tech/static/img/favicon-64.png">
@@ -701,6 +721,11 @@
             generateSeasonJieqiGrid(currentDate);
         }
     </script>
-<!-- build: daily-poetry @ script-miner ba7e5a1a 2026-11-21 09:06 -->
+<a href="./" class="jt-home" aria-label="返回首页 ｜ Back to home" title="返回首页 ｜ Back to home">
+  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+    <path d="M12 3.2 2.8 11h2.5v9.2h5.1v-6h3.2v6h5.1V11h2.5z" fill="currentColor"/>
+  </svg>
+</a>
+<!-- build: daily-poetry @ script-miner e62a48bc 2026-11-21 16:16 -->
 </body>
 </html>

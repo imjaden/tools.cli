@@ -1,8 +1,17 @@
 // git-cloner 数据文件 —— 生成物，勿手改（页面 git-cloner.html 为源码框架）
-// 生成: git-cloner browser --cache (v1.22)
+// 生成: git-cloner browser --cache (v1.25)
 // 口径: 等价 `git-cloner list --json --range=all`（页面口径 --limit=1000）
 window.GIT_CLONER_DATA = {
   "items": [
+    {
+      "label": "anomalyco-opencode",
+      "path": "~/CodeSpace/git-cloner/anomalyco-opencode",
+      "github": "https://github.com/anomalyco/opencode",
+      "size": "5552KB",
+      "time": "2026-11-21T11:00",
+      "tags": [],
+      "articles_count": 0
+    },
     {
       "label": "humanlayer-skills",
       "path": "~/CodeSpace/git-cloner/humanlayer-skills",
@@ -292,15 +301,6 @@ window.GIT_CLONER_DATA = {
       "articles_count": 0
     },
     {
-      "label": "anomalyco-opencode",
-      "path": "~/CodeSpace/git-cloner/anomalyco-opencode",
-      "github": "https://github.com/anomalyco/opencode",
-      "size": "5551KB",
-      "time": "2026-06-05T11:47",
-      "tags": [],
-      "articles_count": 0
-    },
-    {
       "label": "NousResearch-hermes-agent",
       "path": "~/CodeSpace/git-cloner/NousResearch-hermes-agent",
       "github": "https://github.com/NousResearch/hermes-agent",
@@ -447,6 +447,6 @@ window.GIT_CLONER_DATA = {
   ],
   "stats": {
     "total": 49,
-    "updated_at": "2026-11-20 21:49:14"
+    "updated_at": "2026-11-21 13:50:23"
   }
 };

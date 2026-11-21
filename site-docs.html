@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta name="generator" content="html-gen v3.4+tplf120e96b">
+<meta name="generator" content="html-gen v3.5+tplf120e96b">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>tools.cli.jaden.tech 站点主题文档（两仓一源 · 页面发布 · 公开面纪律）</title>
@@ -499,7 +499,7 @@ body:not(.show-toolbar) .github-corner, body:not(.show-toolbar) .github-corner-h
   <div class="doc-main" id="docMain">
     <div class="doc-header">
       <h1>tools.cli.jaden.tech 站点主题文档（两仓一源 · 页面发布 · 公开面纪律）</h1>
-      <div class="meta">创建: 2026-11-17 20:32 · 编辑: 2026-11-17 20:32<br>字数: 2,127 · 阅读约 7 分钟<span class="meta-path"> · 路径: <code>tools-cli-site-handbook-v1.0-20261117.md</code></span></div>
+      <div class="meta">创建: 2026-11-21 16:16 · 编辑: 2026-11-21 16:16<br>字数: 2,635 · 阅读约 8 分钟<span class="meta-path"> · 路径: <code>tools-cli-site-handbook-v1.0-20261117.md</code></span></div>
     </div>
     <div class="doc-body" id="docBody"><blockquote>一句话：tools.cli.jaden.tech 是「个人工具集」的公开门面，内容全部由私有仓 script-miner 的构建器</blockquote>
 <blockquote>pages-manager 生成，产物仓 imjaden/tools.cli 只是它的镜像。</blockquote>
@@ -522,7 +522,7 @@ body:not(.show-toolbar) .github-corner, body:not(.show-toolbar) .github-corner-h
 </tr>
 <tr>
 <td>站点版本</td>
-<td>v1.3（2026-11-17，真源 = 清单 <code>site.version</code>）</td>
+<td>v1.4（2026-11-21，真源 = 清单 <code>site.version</code>）</td>
 </tr>
 <tr>
 <td>页面规模</td>
@@ -640,10 +640,46 @@ body:not(.show-toolbar) .github-corner, body:not(.show-toolbar) .github-corner-h
 <td>A</td>
 <td>public</td>
 <td>/health.html</td>
-<td>逐页可访问性、构建链健康与 90 天可用率（数据来自每日两次探测快照）。</td>
+<td>逐页可访问性、构建链健康与更新时效：近 15 天按日条带 + 90 天 / 30 天聚合可用率（数据来自每日两次探测快照，见 §2.1）。</td>
 </tr>
 </tbody></table>
 <p>私有工具（只进本地导航，公网 404）：<code>pages-manager</code>（别名 <code>pages</code> / <code>tools-cli</code>）</p>
+<h2 id="2-1-站点状态页-数据源与更新节奏">2.1 站点状态页：数据源与更新节奏</h2>
+<p>状态页（<code>/status.html</code>，别名 <code>/health.html</code>）是本站<strong>唯一由自动探测写数据</strong>的页面，读法如下。</p>
+<table><thead><tr>
+<th>项</th>
+<th>说明</th>
+</tr></thead><tbody>
+<tr>
+<td>数据是什么</td>
+<td>每个公开页面与其宿主的<strong>可访问性</strong>（HTTP 状态、TLS 剩余天数）与<strong>更新时效</strong>（产物生成时间 / 预算），不含任何业务数据</td>
+</tr>
+<tr>
+<td>怎么产生</td>
+<td>每日两次在固定槽位探测 → 落快照 → 页面构建期内联；具体时刻与最近一次生成时间见页面与 JSON 里的时间戳（<strong>不是实时监控</strong>，两次采样之间不会变化）</td>
+</tr>
+<tr>
+<td>条带怎么读</td>
+<td>近 15 天、每天一格，取<strong>当日最差有效样本</strong>；90 天 / 30 天可用率为聚合数字；灰色 = 当日没有有效样本</td>
+</tr>
+<tr>
+<td>四态含义</td>
+<td>正常 / 部分降级 / 严重故障 / 未知。「部分降级」指单页或构建链某一项不达标，<strong>不等于站点不可用</strong></td>
+</tr>
+<tr>
+<td>有效样本</td>
+<td>失败集中在探测侧（大面积同时不可达）时，该样本会被标记并排除，格子悬停可看到排除次数；<strong>单页失败照常计入</strong>，宁可误报不掩盖</td>
+</tr>
+<tr>
+<td>机器面</td>
+<td>站内 <code>/status.json</code>：总状态、逐组件状态、可用率、事件与计划维护、生成时间戳；页面与 JSON 同源</td>
+</tr>
+<tr>
+<td>免责</td>
+<td>状态页与被测站点同宿主 —— 宿主自身故障时以 GitHub 平台状态作旁证，不声称「实时自测」</td>
+</tr>
+</tbody></table>
+<p><strong>加站规则</strong>：状态页只监测「有自己部署页面与域名」的站点；没有公网页面的本地/内网服务不纳入（探不到、也给不出对外状态）。</p>
 <h2 id="3-url-与路由规范">3. URL 与路由规范</h2>
 <ul>
 <li><strong>slug 即规范址</strong>：<code>/&lt;slug&gt;.html</code>，一级扁平，不带目录层级。</li>
@@ -800,9 +836,14 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://tools.cli.jaden.tech/pages-man
 <th>摘要</th>
 </tr></thead><tbody>
 <tr>
+<td>v1.1</td>
+<td>2026-11-21</td>
+<td>新增 §2.1「站点状态页：数据源与更新节奏」（数据范围 / 采样节奏 / 条带与四态读法 / 有效样本 / 机器面 / 免责 / 加站规则）；§2 状态页描述对齐近 15 天条带 + 90·30 天聚合口径</td>
+</tr>
+<tr>
 <td>v1.0</td>
 <td>2026-11-17</td>
-<td>首版主题文档：整合两仓一源、页面清单、URL 规范、形态 A–E、门户 v1.12 形态、发布 SOP、公开面纪律、FAQ（SCRIPT-MINER-CL301）</td>
+<td>首版主题文档：整合两仓一源、页面清单、URL 规范、形态 A–E、门户 v1.12 形态、发布 SOP、公开面纪律、FAQ</td>
 </tr>
 </tbody></table></div>
   </div>
@@ -1076,6 +1117,6 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://tools.cli.jaden.tech/pages-man
   })();
 })();
 </script>
-<!-- build: site-docs @ script-miner ba7e5a1a 2026-11-21 09:06 -->
+<!-- build: site-docs @ script-miner e62a48bc 2026-11-21 16:16 -->
 </body>
 </html>
