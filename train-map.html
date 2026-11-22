@@ -26,6 +26,9 @@ Sublime Text
 - Command + k, Command + j 展示所有函数代码
 
 Version
+- v2.0.12@2026/11/22
+  1. 导出 PNG 整块排除地图控件区 `#map-zoom-controls`（原先只挖掉收起箭头，白底 2×3 网格与其余 5 个图标仍留在图上）
+  2. 手机模式开着半透明时导出跟随实际观感：取消导出期强制 `opacity: 1`，只保留 `transition: none`（消灭「屏幕 0.6 / 图里不透明」）
 - v2.0.11@2026/11/20
   1. 移动端车次分组复选框右边距归零，分组标题固定单行并以省略号截断，为复选框和展开按钮预留空间
   2. 移动端购票徽标 padding 紧凑为 18px 2px 8px 2px；标题/路线单行截断并局部避让 36px 操作按钮，其余内容恢复全宽
@@ -963,7 +966,8 @@ Version
                 padding: 18px 2px 8px 2px;
             }
             .timetable-panel.is-translucent { opacity: 0.6; }
-            body.is-exporting .timetable-panel.is-translucent { opacity: 1; transition: none; }
+            /* v2.0.12：导出不再强制不透明（所见即所得），只禁过渡免得截到中间帧 */
+            body.is-exporting .timetable-panel { transition: none; }
             #timetable-opacity-btn { display: flex; }
 
             .timetable-header { padding: 8px; flex-wrap: wrap; row-gap: 4px; }
@@ -1390,7 +1394,7 @@ Version
             const opts = {
                 useCORS: true,
                 // v2.0.5: 拷贝按钮不进导出图（截图是分享物，图标无意义）
-                ignoreElements: (el) => !!(el.classList && (el.classList.contains('pb-copy') || el.classList.contains('pb-collapse') || el.classList.contains('zoom-collapse') || el.classList.contains('launcher-btn'))),
+                ignoreElements: (el) => !!(el && ((el.classList && (el.classList.contains('pb-copy') || el.classList.contains('pb-collapse') || el.classList.contains('zoom-collapse') || el.classList.contains('launcher-btn'))) || el.id === 'map-zoom-controls')),
                 scale: 2,
                 backgroundColor: '#ffffff',
                 logging: false,
@@ -3116,6 +3120,6 @@ Version
          */
         document.addEventListener('DOMContentLoaded', main);
     </script>
-<!-- build: train-map @ script-miner 5f9560b1 2026-11-21 22:03 -->
+<!-- build: train-map @ script-miner e374192c 2026-11-22 09:06 -->
 </body>
 </html>
