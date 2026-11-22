@@ -3,12 +3,12 @@
   "service": "tools-cli",
   "sample_health": {
     "day": "2026-11-22",
-    "total": 1,
-    "valid": 1,
+    "total": 2,
+    "valid": 2,
     "excluded": 0
   },
   "status": "operational",
-  "updated_at": "2026-11-22T09:06:08+08:00",
+  "updated_at": "2026-11-22T18:50:28+08:00",
   "components": [
     {
       "id": "gh-pages",
@@ -19,7 +19,7 @@
       "url": "https://www.githubstatus.com/",
       "uptime_30d": 1.0,
       "uptime_90d": 1.0,
-      "samples": 31,
+      "samples": 32,
       "extensions": {
         "reach": {
           "state": "operational",
@@ -39,26 +39,26 @@
       "status": "operational",
       "desc": "高铁车次全程线路图：途经站点、购票区间高亮、时刻表与座位信息，数据来自 Supabase 只读表。",
       "url": "https://tools.cli.jaden.tech/train-map.html",
-      "uptime_30d": 0.9355,
-      "uptime_90d": 0.9355,
-      "samples": 31,
+      "uptime_30d": 0.9375,
+      "uptime_90d": 0.9375,
+      "samples": 32,
       "extensions": {
         "reach": {
           "http": 200,
-          "ttfb_ms": 829,
-          "bytes": 136071,
+          "ttfb_ms": 1140,
+          "bytes": 136550,
           "location": "",
           "server": "GitHub.com",
           "error": null,
-          "sha256_16": "c6cebabeb0293e18",
-          "tls_days": 83,
+          "sha256_16": "25542ac94480e4e8",
+          "tls_days": 82,
           "attempt": 1,
           "state": "operational"
         },
         "freshness": {
           "anchor": "git",
           "at": "2026-11-22T08:04:13+08:00",
-          "age_h": 1.0,
+          "age_h": 10.8,
           "budget_d": 30,
           "state": "operational"
         }
@@ -71,26 +71,26 @@
       "status": "operational",
       "desc": "PMP 十大知识领域 × 五大过程组 × 49 子过程的 ITTO 关系图谱，备考速查。",
       "url": "https://tools.cli.jaden.tech/pmp-itto.html",
-      "uptime_30d": 0.8387,
-      "uptime_90d": 0.8387,
-      "samples": 31,
+      "uptime_30d": 0.8438,
+      "uptime_90d": 0.8438,
+      "samples": 32,
       "extensions": {
         "reach": {
           "http": 200,
-          "ttfb_ms": 590,
+          "ttfb_ms": 981,
           "bytes": 59697,
           "location": "",
           "server": "GitHub.com",
           "error": null,
-          "sha256_16": "a78b3703affc9435",
-          "tls_days": 83,
+          "sha256_16": "6a5d52b8d50d47f1",
+          "tls_days": 82,
           "attempt": 1,
           "state": "operational"
         },
         "freshness": {
           "anchor": "git",
           "at": "2026-09-05T16:08:48+08:00",
-          "age_h": 1865.0,
+          "age_h": 1874.7,
           "budget_d": 120,
           "state": "operational"
         }
@@ -103,26 +103,26 @@
       "status": "operational",
       "desc": "英语句型与时态转换对照工具，覆盖常见语法的正误示例。",
       "url": "https://tools.cli.jaden.tech/english-translator.html",
-      "uptime_30d": 0.9677,
-      "uptime_90d": 0.9677,
-      "samples": 31,
+      "uptime_30d": 0.9688,
+      "uptime_90d": 0.9688,
+      "samples": 32,
       "extensions": {
         "reach": {
           "http": 200,
-          "ttfb_ms": 561,
+          "ttfb_ms": 1889,
           "bytes": 19165,
           "location": "",
           "server": "GitHub.com",
           "error": null,
-          "sha256_16": "d48b0eb56d729014",
-          "tls_days": 83,
+          "sha256_16": "6a8ffa4426bf1747",
+          "tls_days": 82,
           "attempt": 1,
           "state": "operational"
         },
         "freshness": {
           "anchor": "git",
           "at": "2026-11-15T17:07:43+08:00",
-          "age_h": 160.0,
+          "age_h": 169.7,
           "budget_d": 180,
           "state": "operational"
         }
@@ -135,26 +135,26 @@
       "status": "operational",
       "desc": "品牌色板与配色组合速查，含色值、对比度与使用场景建议。",
       "url": "https://tools.cli.jaden.tech/brand-colors.html",
-      "uptime_30d": 0.9677,
-      "uptime_90d": 0.9677,
-      "samples": 31,
+      "uptime_30d": 0.9688,
+      "uptime_90d": 0.9688,
+      "samples": 32,
       "extensions": {
         "reach": {
           "http": 200,
-          "ttfb_ms": 610,
+          "ttfb_ms": 831,
           "bytes": 43558,
           "location": "",
           "server": "GitHub.com",
           "error": null,
-          "sha256_16": "864846af476fdcbf",
-          "tls_days": 83,
+          "sha256_16": "3cb3922e51123001",
+          "tls_days": 82,
           "attempt": 1,
           "state": "operational"
         },
         "freshness": {
           "anchor": "git",
           "at": "2026-11-15T17:07:43+08:00",
-          "age_h": 160.0,
+          "age_h": 169.7,
           "budget_d": 180,
           "state": "operational"
         }
@@ -167,26 +167,26 @@
       "status": "operational",
       "desc": "生成微信朋友圈封面图（1080×1800），可导出为 PNG 直接使用。",
       "url": "https://tools.cli.jaden.tech/moments-cover.html",
-      "uptime_30d": 0.9677,
-      "uptime_90d": 0.9677,
-      "samples": 31,
+      "uptime_30d": 0.9688,
+      "uptime_90d": 0.9688,
+      "samples": 32,
       "extensions": {
         "reach": {
           "http": 200,
-          "ttfb_ms": 648,
+          "ttfb_ms": 804,
           "bytes": 25742,
           "location": "",
           "server": "GitHub.com",
           "error": null,
-          "sha256_16": "c4417f54d5f13fd4",
-          "tls_days": 83,
+          "sha256_16": "ea2c1b95652a11a2",
+          "tls_days": 82,
           "attempt": 1,
           "state": "operational"
         },
         "freshness": {
           "anchor": "git",
           "at": "2026-11-15T17:07:43+08:00",
-          "age_h": 160.0,
+          "age_h": 169.7,
           "budget_d": 30,
           "state": "operational"
         }
@@ -199,26 +199,26 @@
       "status": "operational",
       "desc": "每日一首诗：原文、注释与赏析，随构建快照发布。",
       "url": "https://tools.cli.jaden.tech/daily-poetry.html",
-      "uptime_30d": 0.9677,
-      "uptime_90d": 0.9677,
-      "samples": 31,
+      "uptime_30d": 0.9688,
+      "uptime_90d": 0.9688,
+      "samples": 32,
       "extensions": {
         "reach": {
           "http": 200,
-          "ttfb_ms": 552,
+          "ttfb_ms": 1520,
           "bytes": 27884,
           "location": "",
           "server": "GitHub.com",
           "error": null,
-          "sha256_16": "24dc5a031ecb50ea",
-          "tls_days": 83,
+          "sha256_16": "521ba293b8d4bf81",
+          "tls_days": 82,
           "attempt": 1,
           "state": "operational"
         },
         "freshness": {
           "anchor": "git",
           "at": "2026-11-21T12:44:21+08:00",
-          "age_h": 20.4,
+          "age_h": 30.1,
           "budget_d": 30,
           "state": "operational"
         }
@@ -231,26 +231,26 @@
       "status": "operational",
       "desc": "本地仓库克隆台账：列表、筛选、统计与 AI 摘要入口，支持 ?range=all 全量视图。",
       "url": "https://tools.cli.jaden.tech/git-cloner.html",
-      "uptime_30d": 0.9355,
-      "uptime_90d": 0.9355,
-      "samples": 31,
+      "uptime_30d": 0.9375,
+      "uptime_90d": 0.9375,
+      "samples": 32,
       "extensions": {
         "reach": {
           "http": 200,
-          "ttfb_ms": 649,
+          "ttfb_ms": 1336,
           "bytes": 153373,
           "location": "",
           "server": "GitHub.com",
           "error": null,
-          "sha256_16": "23de630f94477cdf",
-          "tls_days": 83,
+          "sha256_16": "972749fc6b585a42",
+          "tls_days": 82,
           "attempt": 1,
           "state": "operational"
         },
         "freshness": {
           "anchor": "git",
           "at": "2026-11-15T17:07:43+08:00",
-          "age_h": 160.0,
+          "age_h": 169.7,
           "budget_d": 30,
           "state": "operational"
         }
@@ -263,26 +263,26 @@
       "status": "operational",
       "desc": "微信文章转 Markdown 的本地台账：已处理清单、标签与关联计数、分栏原文预览。",
       "url": "https://tools.cli.jaden.tech/web2md.html",
-      "uptime_30d": 0.9032,
-      "uptime_90d": 0.9032,
-      "samples": 31,
+      "uptime_30d": 0.9062,
+      "uptime_90d": 0.9062,
+      "samples": 32,
       "extensions": {
         "reach": {
           "http": 200,
-          "ttfb_ms": 649,
+          "ttfb_ms": 1381,
           "bytes": 145902,
           "location": "",
           "server": "GitHub.com",
           "error": null,
-          "sha256_16": "2d45991081c52b3e",
-          "tls_days": 83,
+          "sha256_16": "28a4a33e2ddc26aa",
+          "tls_days": 82,
           "attempt": 1,
           "state": "operational"
         },
         "freshness": {
           "anchor": "git",
           "at": "2026-11-15T17:07:43+08:00",
-          "age_h": 160.0,
+          "age_h": 169.7,
           "budget_d": 30,
           "state": "operational"
         }
@@ -295,26 +295,26 @@
       "status": "operational",
       "desc": "iOS 锁屏小组件（Scriptable）效果示例：时钟、天气与今日诗歌同屏演示。",
       "url": "https://tools.cli.jaden.tech/lock-screen.html",
-      "uptime_30d": 0.9677,
-      "uptime_90d": 0.9677,
-      "samples": 31,
+      "uptime_30d": 0.9688,
+      "uptime_90d": 0.9688,
+      "samples": 32,
       "extensions": {
         "reach": {
           "http": 200,
-          "ttfb_ms": 558,
+          "ttfb_ms": 727,
           "bytes": 16245,
           "location": "",
           "server": "GitHub.com",
           "error": null,
-          "sha256_16": "b0183761272535f4",
-          "tls_days": 83,
+          "sha256_16": "8cec670cf8f5106a",
+          "tls_days": 82,
           "attempt": 1,
           "state": "operational"
         },
         "freshness": {
           "anchor": "git",
           "at": "2026-11-15T17:07:43+08:00",
-          "age_h": 160.0,
+          "age_h": 169.7,
           "budget_d": 120,
           "state": "operational"
         }
@@ -327,26 +327,26 @@
       "status": "operational",
       "desc": "本站定位、页面清单、URL 规范、发布流程与公开面纪律，随构建快照发布。",
       "url": "https://tools.cli.jaden.tech/site-docs.html",
-      "uptime_30d": 0.9355,
-      "uptime_90d": 0.9355,
-      "samples": 31,
+      "uptime_30d": 0.9375,
+      "uptime_90d": 0.9375,
+      "samples": 32,
       "extensions": {
         "reach": {
           "http": 200,
-          "ttfb_ms": 598,
+          "ttfb_ms": 826,
           "bytes": 54464,
           "location": "",
           "server": "GitHub.com",
           "error": null,
-          "sha256_16": "983311d50df8a8f6",
-          "tls_days": 83,
+          "sha256_16": "68bf300565dde79e",
+          "tls_days": 82,
           "attempt": 1,
           "state": "operational"
         },
         "freshness": {
           "anchor": "git",
           "at": "2026-11-21T16:26:25+08:00",
-          "age_h": 16.7,
+          "age_h": 26.4,
           "budget_d": 30,
           "state": "operational"
         }
@@ -359,15 +359,15 @@
       "status": "operational",
       "desc": "dist 水印必须包含页面源最近提交",
       "url": "",
-      "uptime_30d": 0.9355,
-      "uptime_90d": 0.9355,
-      "samples": 31,
+      "uptime_30d": 0.9375,
+      "uptime_90d": 0.9375,
+      "samples": 32,
       "extensions": {
         "reach": null,
         "freshness": {
           "state": "operational",
-          "note": "水印 5f9560b1",
-          "age_h": 11.0
+          "note": "水印 c0d13e3b",
+          "age_h": 0.9
         }
       }
     },
@@ -378,9 +378,9 @@
       "status": "operational",
       "desc": "门户断言 + 公开面纪律",
       "url": "",
-      "uptime_30d": 0.8387,
-      "uptime_90d": 0.8387,
-      "samples": 31,
+      "uptime_30d": 0.8438,
+      "uptime_90d": 0.8438,
+      "samples": 32,
       "extensions": {
         "reach": null,
         "freshness": {
@@ -398,13 +398,13 @@
       "url": "",
       "uptime_30d": 1.0,
       "uptime_90d": 1.0,
-      "samples": 31,
+      "samples": 32,
       "extensions": {
         "reach": null,
         "freshness": {
           "state": "operational",
-          "note": "产物仓最近发布 0.5 天前",
-          "age_h": 11.0,
+          "note": "产物仓最近发布 0.2 天前",
+          "age_h": 5.7,
           "budget_d": 7
         }
       }
@@ -447,8 +447,8 @@
   ],
   "maintenance": [],
   "uptime": {
-    "30d": 0.9401,
-    "90d": 0.9401
+    "30d": 0.942,
+    "90d": 0.942
   },
   "meta": {
     "schedule": "09:05 / 21:45",
