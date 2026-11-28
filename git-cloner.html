@@ -52,6 +52,15 @@ v3.4.0 新增（SCRIPT-MINER-CL036, 设计 §15.5 契约）：「🏷 标签」p
 4. 其余 runtime 能力与列配置不变（range/分栏/复制按钮/stats 行零回退）；数据 js 契约字段缺失 → 列空、计数 0，不报错
 遗留（需 html-gen 侧配合，本文件不解决）：页头「拷贝 subl 命令」按钮错位（label 承诺命令、
    copyKey 实拷裸路径）—— 用户判定暂不动（ai-context-export-design-v1.0-20260918.md §6 D6=C）。
+v3.5.0 修正（SCRIPT-MINER-CL387）：静态通道默认 range 回退 all —— 修「线上页打开是空表」
+1. 现象：tools.cli.jaden.tech 上打开本页恒显「暂无数据 / 0 条」，而 git-cloner-data.js 实到 49 条；
+   加 `?range=all` 立刻正常。根因 = 默认 range=today，无服务回退静态后按今天过滤，历史克隆全被滤掉。
+2. 修法：`gcResolveRange()` 记录「range 是否来自默认值」（无 URL、无 localStorage 命中）；
+   `gcLoadRange` 的 catch（= 无服务 / API 失败）里，若该 range 来自默认值且为 today，改用 `all` 重取，
+   同步写回 localStorage + `?range=` + 重标 range tab 激活态 —— 有服务时行为不变（服务端 range 语义保持）。
+3. 显式 `?range=today` / 已存 range 的用户不受影响（只在默认值路径上兜底）。
+4. 数据面：`efficiency/git-cloner-data.js` 于同笔回转入库（CL038 去跟踪反转，理由见 .gitignore 注释）；
+   生成器与页面逻辑零变更，仍是双通道 + 同源口径。
 -->
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -2717,7 +2726,9 @@ pre code { background: none; padding: 0; }
   }
 
   // range 优先级：URL(?range=) > localStorage(新键) > 旧键(迁移) > today
+  // v3.5.0（CL387）：记录「本次 range 是否来自默认值」——静态回退时据此改取 all（见 gcLoadRange 的 catch）
   function gcResolveRange() {
+    window.gcRangeDefaulted = false;
     var fromUrl = null;
     try { fromUrl = new URLSearchParams(location.search).get('range'); } catch(e) {}
     if (fromUrl !== null && fromUrl !== undefined && RANGE_VALUES.indexOf(fromUrl) !== -1) return fromUrl;
@@ -2727,8 +2738,14 @@ pre code { background: none; padding: 0; }
         v = localStorage.getItem(RANGE_KEY_LEGACY);
         if (v) localStorage.setItem(RANGE_KEY, v);   // 旧键迁移一次
       }
+      if (!v || RANGE_VALUES.indexOf(v) === -1) window.gcRangeDefaulted = true;
       return gcNormalizeRange(v);
-    } catch(e) { return 'today'; }
+    } catch(e) { window.gcRangeDefaulted = true; return 'today'; }
+  }
+
+  // v3.5.0（CL387）：静态回退的 range 兜底 —— 默认值(today) → all；显式选择不动
+  function gcFallbackRange(range, defaulted) {
+    return (defaulted && range === 'today') ? 'all' : range;
   }
 
   // list API / 数据 js 行归一：size 字符串→数值；tags/articles 保形并预算 _tagIds
@@ -2867,7 +2884,19 @@ pre code { background: none; padding: 0; }
       })
       .catch(function(e) {
         // 无服务（file:// / 服务未起）或 API 失败 → 静态数据 js 回退（v3.3.0, D2 A）
-        gcStaticFallback(stored, e && e.message ? e.message : '');
+        // v3.5.0（CL387）：range 来自默认值（无 URL / 无 localStorage）时改用 all ——
+        //   静态数据是历史快照，按 today 过滤常为 0 条，线上页会误显「暂无数据」（49 条数据却显示 0）
+        var fbRange = gcFallbackRange(stored, window.gcRangeDefaulted);
+        if (fbRange !== stored) {
+          window.gcRange = fbRange;
+          try { localStorage.setItem(RANGE_KEY, fbRange); } catch(e2) {}
+          syncUrlState();
+          var btns = document.querySelectorAll('.range-tab');
+          for (var i = 0; i < btns.length; i++) {
+            btns[i].classList.toggle('active', btns[i].dataset.range === fbRange);
+          }
+        }
+        gcStaticFallback(fbRange, e && e.message ? e.message : '');
       });
   };
 
@@ -3001,6 +3030,6 @@ window.selectRange = function(range) {
   }
 };
 </script>
-<!-- build: git-cloner @ script-miner 50911f7a 2026-11-23 21:46 -->
+<!-- build: git-cloner @ script-miner c4e43868 2026-11-28 20:31 -->
 </body>
 </html>

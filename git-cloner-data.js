@@ -1,8 +1,17 @@
 // git-cloner 数据文件 —— 生成物，勿手改（页面 git-cloner.html 为源码框架）
-// 生成: git-cloner browser --cache (v1.25)
+// 生成: git-cloner browser --cache (v1.27)
 // 口径: 等价 `git-cloner list --json --range=all`（页面口径 --limit=1000）
 window.GIT_CLONER_DATA = {
   "items": [
+    {
+      "label": "pranshuparmar-witr",
+      "path": "~/CodeSpace/git-cloner/pranshuparmar-witr",
+      "github": "https://github.com/pranshuparmar/witr",
+      "size": "1164KB",
+      "time": "2026-11-28T18:24",
+      "tags": [],
+      "articles_count": 0
+    },
     {
       "label": "anomalyco-opencode",
       "path": "~/CodeSpace/git-cloner/anomalyco-opencode",
@@ -446,7 +455,7 @@ window.GIT_CLONER_DATA = {
     }
   ],
   "stats": {
-    "total": 49,
-    "updated_at": "2026-11-21 13:50:23"
+    "total": 50,
+    "updated_at": "2026-11-28 18:56:52"
   }
 };

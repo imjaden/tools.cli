@@ -1,0 +1,628 @@
+<!--
+===========================================================================
+Karpathy Principles - AI编程四大原则
+===========================================================================
+1. 先思考 - 不假设，不隐藏困惑 → 不确定就问，多种解释列出
+2. 保持简单 - 最小代码解决问题 → 无多余抽象
+3. 精准修改 - 只改必须改的 → 不"顺便"改进邻接代码
+4. 目标驱动 - 测试先行，验证闭环 → "修bug"→"写测试复现→让测试通过"
+
+Version: 1.0(2026-11-28)
+Description
+- 花束识花结果页 + 可复用契约：一份香槟玫瑰花束的逐类识别结果（花语/形态/香气/养护/目测支数/图中热点），
+  同时把「识花 Prompt + 数据 schema」作为可复用资产暴露给 AI agent（一条链接 + 一次复制即可再开发）
+- 数据单源：内联 <script type="application/json" id="bloom-data"> 为准，`bouquet-data.json` 为同源副本
+  （pages-manager bundle 随页发布，供 agent 直接 GET）；两者解析后必须逐字相等（测试钉死）
+- 复用面：`?id=<flowerId>` 直选某类花材 · `?prompt=1` 直开复用包弹窗 · 「复制给 AI」一次性拷走 Prompt + schema + 示例数据
+- 来源：用户 2026-11-27 拍摄花束照片（原图 3000×4000，页面用 1400px 压缩版 400KB），v1.3 识别结果移植
+
+【功能清单】
+| 功能 | 说明 |
+|------|------|
+| 品类联动 | 左列品类 ↔ 图中热点框 ↔ 右列详情三处联动，点任一即选中 |
+| 占比统计 | 仅 counts_in_bloom=true 的花材计入分母（本束 33 朵），叶材/配草不计 |
+| 显示所有 | 勾选后每类只显示带名字标签的首框，避免画面糊成一团 |
+| 复用包 | 「复制给 AI」弹窗：Prompt 全文 + schema 摘要 + 当前数据集 JSON，一键入剪贴板 |
+| 本页数据 | 右列底部「数据契约」面板列出 schema_version / dataset / flowers 字段与直链 |
+| 深链 | `?id=sunflower` 直接选中向日葵；`?prompt=1` 直接打开复用包 |
+===========================================================================
+-->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="alternate" type="application/json" href="/bouquet-data.json" title="花束识花数据契约（agent 用）">
+<title>花束识花 · v1.0</title>
+<style>
+  :root{
+    --bg:#f6f1e7;
+    --panel:#fffdf8;
+    --line:#e7dcc8;
+    --ink:#3d3327;
+    --sub:#8a7a63;
+    --accent:#d98a5b;
+    --accent-soft:#f3d9c6;
+    --shadow:0 6px 20px rgba(90,70,40,.10);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;}
+  body{
+    font-family:"PingFang SC","Microsoft YaHei","Noto Sans SC",system-ui,-apple-system,sans-serif;
+    background:var(--bg);color:var(--ink);display:flex;flex-direction:column;
+  }
+
+  /* ===== 顶栏 ===== */
+  .topbar{
+    flex:none;display:flex;align-items:center;gap:12px;padding:10px 24px;
+    background:var(--panel);border-bottom:1px solid var(--line);
+  }
+  .topbar h1{font-size:15px;font-weight:700;}
+  .topbar .sub{font-size:12px;color:var(--sub);}
+  .topbar .spacer{flex:1;}
+  .topbar .tbtn{
+    padding:6px 14px;border-radius:9px;border:1px solid var(--line);background:#faf3e8;
+    color:var(--ink);font-size:13px;font-weight:600;cursor:pointer;
+  }
+  .topbar .tbtn:hover{background:var(--accent-soft);border-color:var(--accent);}
+
+  main{flex:1;display:flex;gap:16px;padding:16px 24px;min-height:0;}
+
+  /* ===== 左列：品类列表 ===== */
+  .col-list{
+    width:240px;flex:none;background:var(--panel);border:1px solid var(--line);
+    border-radius:14px;box-shadow:var(--shadow);overflow-y:auto;padding:12px;
+    display:flex;flex-direction:column;
+  }
+  .list-head{display:flex;align-items:center;justify-content:space-between;margin:4px 6px 6px;}
+  .col-list h2{font-size:13px;color:var(--sub);font-weight:600;}
+  .ai-btn{
+    flex:none;width:28px;height:28px;border:1px solid var(--line);border-radius:8px;
+    background:#faf3e8;color:var(--accent);display:flex;align-items:center;justify-content:center;
+    cursor:pointer;transition:all .15s;
+  }
+  .ai-btn:hover{background:var(--accent-soft);border-color:var(--accent);}
+  .total-line{font-size:12px;color:var(--sub);padding:0 6px 10px;line-height:1.6;}
+  .flower-item{
+    display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:10px;
+    cursor:pointer;border:1px solid transparent;margin-bottom:6px;transition:all .15s;
+  }
+  .flower-item:hover{background:#faf3e8;}
+  .flower-item.active{background:var(--accent-soft);border-color:var(--accent);}
+  .flower-item .dot{width:12px;height:12px;border-radius:50%;flex:none;}
+  .flower-item .meta{min-width:0;flex:1;}
+  .flower-item .name{font-size:14px;font-weight:600;}
+  .flower-item .alias{font-size:11px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .flower-item .count{font-size:12px;color:var(--sub);flex:none;text-align:right;line-height:1.5;}
+  .flower-item .ratio{font-size:11px;color:var(--accent);}
+
+  /* 底部开关 */
+  .radio-row{
+    margin-top:auto;display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:10px;
+    background:#faf3e8;cursor:pointer;font-size:13px;font-weight:600;
+  }
+  .radio-row input{accent-color:var(--accent);}
+
+  /* ===== 中列：图片 + 热点（隐藏滚动条） ===== */
+  .col-image{
+    flex:1;display:flex;align-items:center;justify-content:center;min-width:0;
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    box-shadow:var(--shadow);padding:16px;overflow:auto;
+    scrollbar-width:none;-ms-overflow-style:none;
+  }
+  .col-image::-webkit-scrollbar{display:none;}
+  .figure{position:relative;display:inline-block;max-width:100%;}
+  .figure img{display:block;max-width:100%;max-height:calc(100vh - 130px);border-radius:10px;}
+  .hotspot{
+    position:absolute;border:1.5px solid var(--accent);border-radius:8px;
+    background:rgba(217,138,91,.16);cursor:pointer;transition:all .15s;
+  }
+  .hotspot.dim{opacity:.14;}
+  .hotspot:hover{opacity:1 !important;}
+  .hotspot .tag{
+    position:absolute;top:3px;left:3px;background:var(--accent);color:#fff;
+    font-size:10px;line-height:1.4;padding:1px 7px;border-radius:6px;white-space:nowrap;
+    max-width:90%;overflow:hidden;text-overflow:ellipsis;
+  }
+  .figure .hint{
+    position:absolute;bottom:10px;left:50%;transform:translateX(-50%);
+    background:rgba(61,51,39,.72);color:#fff;font-size:12px;padding:5px 12px;border-radius:8px;
+  }
+
+  /* ===== 右列：详情 ===== */
+  .col-detail{
+    width:340px;flex:none;background:var(--panel);border:1px solid var(--line);
+    border-radius:14px;box-shadow:var(--shadow);overflow-y:auto;padding:20px;
+  }
+  .detail .badge{display:inline-block;font-size:12px;color:var(--accent);background:var(--accent-soft);
+    padding:3px 10px;border-radius:20px;margin-bottom:10px;}
+  .detail h2{font-size:20px;margin-bottom:4px;}
+  .detail .alias{font-size:13px;color:var(--sub);margin-bottom:14px;}
+  .detail section{margin-bottom:16px;}
+  .detail section h3{font-size:13px;color:var(--accent);margin-bottom:6px;font-weight:600;}
+  .detail section p{font-size:14px;line-height:1.75;color:var(--ink);}
+  .detail .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
+  .detail .tags span{font-size:12px;background:#f3ecdd;border-radius:6px;padding:3px 9px;color:var(--sub);}
+
+  /* ===== 数据契约面板 ===== */
+  .contract{border-top:1px dashed var(--line);padding-top:14px;margin-top:4px;}
+  .contract h3{font-size:13px;color:var(--accent);margin-bottom:8px;font-weight:600;}
+  .contract dl{display:grid;grid-template-columns:96px 1fr;gap:4px 10px;font-size:12px;line-height:1.6;}
+  .contract dt{color:var(--sub);}
+  .contract dd{color:var(--ink);word-break:break-all;}
+  .contract a{color:var(--accent);}
+  .contract .hintline{font-size:12px;color:var(--sub);margin-top:8px;line-height:1.7;}
+
+  /* ===== 复用包弹窗 ===== */
+  .modal-mask{
+    position:fixed;inset:0;background:rgba(61,51,39,.45);z-index:100;
+    display:none;align-items:center;justify-content:center;
+  }
+  .modal-mask.open{display:flex;}
+  .modal-panel{
+    width:80vw;height:90vh;background:var(--panel);border-radius:16px;
+    display:flex;flex-direction:column;overflow:hidden;box-shadow:var(--shadow);
+  }
+  .modal-head{
+    padding:16px 20px;border-bottom:1px solid var(--line);
+    display:flex;align-items:center;justify-content:space-between;font-weight:700;font-size:15px;
+  }
+  .modal-head .close{
+    width:30px;height:30px;border:none;background:#faf3e8;border-radius:8px;cursor:pointer;
+    font-size:18px;color:var(--sub);line-height:1;
+  }
+  .modal-head .close:hover{background:var(--accent-soft);color:var(--ink);}
+  #promptText{
+    flex:1;width:100%;border:none;outline:none;resize:none;background:transparent;
+    padding:20px;font-family:inherit;font-size:13px;line-height:1.8;color:var(--ink);
+  }
+  .modal-foot{padding:14px 20px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:10px;}
+  .btn{
+    padding:8px 18px;border-radius:10px;border:1px solid var(--line);background:#faf3e8;
+    cursor:pointer;font-size:13px;font-weight:600;color:var(--ink);
+  }
+  .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .btn:hover{opacity:.9;}
+
+  footer{
+    flex:none;padding:8px 24px 14px;font-size:12px;color:var(--sub);
+    display:flex;gap:12px;flex-wrap:wrap;
+  }
+
+  @media (max-width:960px){
+    main{flex-direction:column;padding:12px;}
+    .col-list,.col-detail{width:100%;}
+    .col-image{min-height:46vh;}
+    .figure img{max-height:60vh;}
+    .modal-panel{width:92vw;height:86vh;}
+  }
+</style>
+
+    <link rel="canonical" href="https://tools.cli.jaden.tech/bouquet.html">
+    <link rel="icon" href="https://www.jaden.tech/static/img/favicon-64.png">
+    <meta name="description" content="一束花的逐类识别结果（花语/形态/香气/养护/支数占比/图中热点），附 agent 可复用的识花 Prompt 与数据契约。">
+    <meta property="og:title" content="花束识花">
+    <meta property="og:description" content="一束花的逐类识别结果（花语/形态/香气/养护/支数占比/图中热点），附 agent 可复用的识花 Prompt 与数据契约。">
+    <meta name="theme-color" content="#d98a5b">
+</head>
+<body>
+
+<div class="topbar">
+  <h1>花束识花</h1>
+  <span class="sub" id="topSub"></span>
+  <span class="spacer"></span>
+  <button class="tbtn" id="topCopy">复制给 AI（Prompt + 契约）</button>
+  <button class="tbtn" id="topPrompt">看识别 Prompt</button>
+</div>
+
+<main>
+  <!-- 左列 -->
+  <aside class="col-list" id="list"></aside>
+
+  <!-- 中列 -->
+  <section class="col-image">
+    <div class="figure" id="figure">
+      <img id="figureImg" src="/bouquet.jpg" alt="花束原图">
+      <div id="hotspots"></div>
+      <div class="hint">点击图中区域 / 左侧名称联动</div>
+    </div>
+  </section>
+
+  <!-- 右列 -->
+  <aside class="col-detail" id="detail"></aside>
+</main>
+
+<footer>
+  <span id="footMeta"></span>
+  <span>数据契约: <a href="/bouquet-data.json">bouquet-data.json</a></span>
+  <span>agent 复用: 本页 URL + 一次复制（Prompt + schema + 示例数据）</span>
+</footer>
+
+<!-- 复用包弹窗 -->
+<div class="modal-mask" id="promptModal">
+  <div class="modal-panel">
+    <div class="modal-head">
+      <span>花束识花 · 复用包（Prompt + 数据契约 + 本图示例）</span>
+      <button class="close" id="modalClose" title="关闭">×</button>
+    </div>
+    <textarea id="promptText" readonly></textarea>
+    <div class="modal-foot">
+      <button class="btn" id="modalCancel">关闭</button>
+      <button class="btn primary" id="copyBtn">复制复用包</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 数据单源（真源）：改数据只改这里，bouquet-data.json 由它派生 ===== -->
+<script type="application/json" id="bloom-data">
+{
+  "schema_version": "1.0",
+  "dataset": {
+    "id": "bouquet-champagne-20261127",
+    "title": "香槟玫瑰 × 橙色多头玫瑰 · 尤加利收边花束",
+    "image": "bouquet.jpg",
+    "image_alt": "香槟玫瑰与橙色多头玫瑰为主花，白色洋桔梗与绿色康乃馨配花，圆叶尤加利与配草收边",
+    "image_size": [1400, 1867],
+    "source": "用户拍摄（2026-11-27，原图 3000×4000，页面用 1400px 压缩版）",
+    "counted_at": "2026-11-27",
+    "updated_at": "2026-11-28",
+    "count_note": "count_num 为目测支数；仅 counts_in_bloom=true 的花材计入占比分母（本束 33 朵）",
+    "hotspot_space": "normalized-xywh-0to1"
+  },
+  "prompt": {
+    "version": "1.3",
+    "label": "花束识花 · 复用 Prompt",
+    "text": "你是一名专业花艺师与植物识别专家。请根据我提供的花束图片，严格按以下模板输出识别结果：\n\n一、花材清单（逐类列出，主花 / 配花 / 焦点花 / 配叶 / 配草分开标注）\n1. 品类名称（附别名或常见品种，无法精确判定时写到“类”，并说明歧义）\n2. 角色定位：主花 / 配花 / 焦点花 / 配叶 / 配草\n3. 目测支数（朵 / 枝 / 束）\n4. 花语寓意\n5. 形态特性：花型、花色、花瓣质感、花期与整体气质\n6. 花香气味：香气浓淡、香型（甜香 / 果香 / 草木香 / 清凉香等）、是否对香味敏感友好\n7. 养护要点：瓶插期、醒花方式、换水频率、避晒避风等注意事项\n\n二、统计汇总\n- 给出共识别多少类；仅统计“花”的品类，列出各类支数及占比（分母为花朵总数）；叶材、配草不计入占比。\n\n三、位置标注\n- 为每类花材给出在图片中的归一化热点区域坐标 {x, y, w, h}（取值 0~1，左上角为原点）；同类多朵可给多个框。\n\n四、整体解读\n- 配色逻辑、情感主线与适用场合；附上养护提醒（切花不可食用、避免花瓣积水等）。\n\n输出要求：先用一句话总览整束花的基调，再以结构化表格 / 列表呈现；语言简洁、分类清晰，不确定的信息明确标注为推测。\n\n五、机器可读输出（给下游程序/agent 复用，必给）\n- 在自然语言之后追加一段 ```json 代码块，结构与字段与本方页面的 bouquet-data.json 完全一致：\n  {schema_version, dataset{id,title,image,image_alt,counted_at,updated_at,count_note,hotspot_space}, prompt{version,label,text}, flowers[{id,name,alias,role,color,count_text,count_num,counts_in_bloom,meaning,feature,scent,care,tags,hotspots[{x,y,w,h}]}]}\n- flowers[].id 用英文 kebab-case 唯一键；count_num 为整数（枝/束类可估整）；counts_in_bloom 标记该品类是否计入花朵占比分母。"
+  },
+  "flowers": [
+    {
+      "id": "champagne",
+      "name": "香槟玫瑰",
+      "alias": "蜜桃雪山类 · 浅杏奶油色切花月季",
+      "role": "主花 · 数量最多",
+      "color": "#e9c39a",
+      "count_text": "12 朵",
+      "count_num": 12,
+      "counts_in_bloom": true,
+      "meaning": "只钟情你一人、温柔长久的爱、优雅含蓄、珍惜眼前人。",
+      "feature": "切花月季，花瓣层叠、花头饱满硕大；全年温室供应，色调介于白玫瑰与黄玫瑰之间，气质温柔雅致。",
+      "scent": "淡甜香，柔和清雅，带淡淡蔷薇与蜜糖气息，不浓烈，凑近才闻得到。",
+      "care": "瓶插约 7–12 天，低温并规范换水可接近两周；到手先斜剪根部、深水醒花，花瓣避免往上喷水。",
+      "tags": ["专一温柔", "大花头", "耐养"],
+      "hotspots": [
+        {"x": 0.16, "y": 0.30, "w": 0.18, "h": 0.14}, {"x": 0.07, "y": 0.36, "w": 0.22, "h": 0.16},
+        {"x": 0.29, "y": 0.32, "w": 0.24, "h": 0.16}, {"x": 0.43, "y": 0.22, "w": 0.22, "h": 0.11},
+        {"x": 0.60, "y": 0.33, "w": 0.20, "h": 0.13}, {"x": 0.67, "y": 0.37, "w": 0.25, "h": 0.17},
+        {"x": 0.05, "y": 0.50, "w": 0.23, "h": 0.19}, {"x": 0.42, "y": 0.52, "w": 0.24, "h": 0.15},
+        {"x": 0.38, "y": 0.66, "w": 0.27, "h": 0.19}, {"x": 0.59, "y": 0.72, "w": 0.27, "h": 0.17},
+        {"x": 0.80, "y": 0.54, "w": 0.17, "h": 0.15}
+      ]
+    },
+    {
+      "id": "orange",
+      "name": "橙色多头玫瑰",
+      "alias": "橙色泡泡类 · 小朵成簇",
+      "role": "主花点缀 · 暖色跳色",
+      "color": "#d9603f",
+      "count_text": "12 朵",
+      "count_num": 12,
+      "counts_in_bloom": true,
+      "meaning": "热情活力、青春气息、信赖与羁绊、甜蜜思念。",
+      "feature": "一枝多花，花头小巧密集；枝条柔软有弹性，在花束中充当暖色小亮点，画面跳脱活泼。",
+      "scent": "清新偏果香的玫瑰香，比红玫瑰清淡，微甜，需凑近才明显。",
+      "care": "瓶插期与单头玫瑰相近；摘除入水部分叶片，斜剪根后深水醒花，避免花瓣积水。",
+      "tags": ["热情活力", "一枝多花", "跳色"],
+      "hotspots": [
+        {"x": 0.15, "y": 0.29, "w": 0.13, "h": 0.10}, {"x": 0.34, "y": 0.24, "w": 0.13, "h": 0.08},
+        {"x": 0.42, "y": 0.39, "w": 0.16, "h": 0.12}, {"x": 0.82, "y": 0.45, "w": 0.17, "h": 0.12},
+        {"x": 0.06, "y": 0.44, "w": 0.11, "h": 0.08}, {"x": 0.38, "y": 0.60, "w": 0.13, "h": 0.08},
+        {"x": 0.28, "y": 0.68, "w": 0.17, "h": 0.13}, {"x": 0.84, "y": 0.69, "w": 0.15, "h": 0.10},
+        {"x": 0.60, "y": 0.64, "w": 0.11, "h": 0.10}
+      ]
+    },
+    {
+      "id": "eustoma",
+      "name": "白色洋桔梗",
+      "alias": "白桔梗 · 草原龙胆",
+      "role": "配花 · 填充中层",
+      "color": "#f2f0ea",
+      "count_text": "5 朵",
+      "count_num": 5,
+      "counts_in_bloom": true,
+      "meaning": "永恒的爱、真诚不变、纯洁与始终如一。",
+      "feature": "龙胆科草本，花型似玫瑰但线条更轻盈，花瓣带波浪边；花苞可陆续开放。",
+      "scent": "几乎无香，仅极淡青草清气，对香味敏感者友好。",
+      "care": "耐养，瓶插约 7–14 天；保留已显色的上部花苞，及时清除水下叶片。",
+      "tags": ["永恒真诚", "轻盈耐养", "近乎无香"],
+      "hotspots": [
+        {"x": 0.18, "y": 0.43, "w": 0.19, "h": 0.11}, {"x": 0.44, "y": 0.33, "w": 0.17, "h": 0.10},
+        {"x": 0.84, "y": 0.34, "w": 0.15, "h": 0.10}, {"x": 0.50, "y": 0.45, "w": 0.19, "h": 0.12},
+        {"x": 0.22, "y": 0.59, "w": 0.17, "h": 0.12}
+      ]
+    },
+    {
+      "id": "carnation",
+      "name": "绿色康乃馨",
+      "alias": "浅绿绒团状",
+      "role": "配花 · 冷色平衡",
+      "color": "#b9d69a",
+      "count_text": "3 朵",
+      "count_num": 3,
+      "counts_in_bloom": true,
+      "meaning": "健康、活力、青春常驻、生机与希望；常寓早日康复、长辈康健。",
+      "feature": "花瓣层叠、带锯齿褶皱，呈圆润绒球状；绿色沉静脱俗，是最耐养的切花之一。",
+      "scent": "清淡草木甜香，比粉/红康乃馨柔和，不冲鼻。",
+      "care": "瓶插约 7–14 天；隔天换水、每次重新斜剪根，避免阳光直射与空调风口。",
+      "tags": ["健康活力", "绒团锯齿边", "超长待机"],
+      "hotspots": [
+        {"x": 0.46, "y": 0.27, "w": 0.17, "h": 0.10}, {"x": 0.00, "y": 0.43, "w": 0.10, "h": 0.12},
+        {"x": 0.66, "y": 0.60, "w": 0.17, "h": 0.14}
+      ]
+    },
+    {
+      "id": "sunflower",
+      "name": "向日葵",
+      "alias": "明黄单朵 · 黑心花盘",
+      "role": "焦点花 · 提亮中心",
+      "color": "#f2b52a",
+      "count_text": "1 朵",
+      "count_num": 1,
+      "counts_in_bloom": true,
+      "meaning": "阳光活力、忠诚爱慕、勇敢追梦、沉默的爱。",
+      "feature": "花盘大、花色最饱和，一束中通常只放 1–2 朵做视觉中心；与卡片 “You are sunshine” 呼应。",
+      "scent": "基本无香，带一丝清淡青草与种子气息。",
+      "care": "喜光照，但瓶插期相对玫瑰偏短；花瓣不要喷水，远离风口，浅水养护即可。",
+      "tags": ["阳光向上", "视觉焦点", "忠诚爱慕"],
+      "hotspots": [
+        {"x": 0.24, "y": 0.45, "w": 0.22, "h": 0.17}
+      ]
+    },
+    {
+      "id": "eucalyptus",
+      "name": "圆叶尤加利",
+      "alias": "铜钱桉 · 灰绿圆叶对生",
+      "role": "主配叶 · 撑骨架",
+      "color": "#7f9a8d",
+      "count_text": "约 7 枝",
+      "count_num": 7,
+      "counts_in_bloom": false,
+      "meaning": "恩赐、回忆、清新自然、协调高级感。",
+      "feature": "叶片灰绿圆润、对生；叶材非常耐放，干枯后仍可做干花，撑起花束层次。",
+      "scent": "明显清凉草本香，带樟脑与薄荷感，揉碎后更浓，有提神效果。",
+      "care": "耐旱，少喷水；可长期留存，是 ins 风高级感的主要来源。",
+      "tags": ["恩赐回忆", "耐放可干制", "骨架配叶"],
+      "hotspots": [
+        {"x": 0.02, "y": 0.16, "w": 0.17, "h": 0.30}, {"x": 0.20, "y": 0.33, "w": 0.15, "h": 0.13},
+        {"x": 0.64, "y": 0.18, "w": 0.17, "h": 0.15}, {"x": 0.70, "y": 0.45, "w": 0.17, "h": 0.12},
+        {"x": 0.38, "y": 0.78, "w": 0.21, "h": 0.13}
+      ]
+    },
+    {
+      "id": "filler",
+      "name": "配草",
+      "alias": "喷泉草 + 细碎小花（翠珠/蓝星花类）",
+      "role": "填充点缀 · 线条与呼吸感",
+      "color": "#9db98a",
+      "count_text": "若干束",
+      "count_num": 0,
+      "counts_in_bloom": false,
+      "meaning": "朦胧、轻盈、点缀浪漫。",
+      "feature": "细丝状线条增加蓬松感与呼吸感，填补花与叶之间的空隙；细碎小花耐开，负责细节层次。",
+      "scent": "基本无香，仅有细微青草气。",
+      "care": "易脱水，保持浅水湿润即可；枯萎的细枝可随时摘除。",
+      "tags": ["朦胧轻盈", "填空透气", "细节层次"],
+      "hotspots": [
+        {"x": 0.26, "y": 0.14, "w": 0.20, "h": 0.14}, {"x": 0.74, "y": 0.22, "w": 0.19, "h": 0.16},
+        {"x": 0.58, "y": 0.52, "w": 0.21, "h": 0.12}, {"x": 0.36, "y": 0.58, "w": 0.19, "h": 0.10}
+      ]
+    }
+  ]
+}
+</script>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════
+   渲染层：只读 BLOOM_DATA，不含业务数据（数据改了不用动这里）
+   ══════════════════════════════════════════════════════════════════ */
+var BLOOM_DATA = JSON.parse(document.getElementById('bloom-data').textContent);
+window.BLOOM_DATA = BLOOM_DATA;
+
+var FLOWERS = BLOOM_DATA.flowers;
+var DATASET = BLOOM_DATA.dataset;
+
+/* 占比口径：counts_in_bloom=true 的品类进分母 */
+var bloomTotal = FLOWERS.filter(function (f) { return f.counts_in_bloom; })
+  .reduce(function (s, f) { return s + (f.count_num || 0); }, 0);
+
+function ratioOf(f) {
+  if (!f.counts_in_bloom) return null;
+  return ((f.count_num / bloomTotal) * 100).toFixed(1) + '%';
+}
+
+/* ===== 深链状态 ===== */
+var qs = new URLSearchParams(location.search);
+var requestedId = qs.get('id');
+var selectedId = FLOWERS.some(function (f) { return f.id === requestedId; }) ? requestedId : FLOWERS[0].id;
+var showAll = false;
+
+var listEl = document.getElementById('list');
+var hotEl = document.getElementById('hotspots');
+var detailEl = document.getElementById('detail');
+
+/* 顶栏/页脚事实行（全部来自数据，避免文案与数据两处维护） */
+document.getElementById('topSub').textContent =
+  DATASET.title + ' · ' + FLOWERS.length + ' 类 · 主配花 ' + bloomTotal + ' 朵';
+document.getElementById('footMeta').textContent =
+  '版本 1.0(2026-11-28) · 识别 ' + DATASET.counted_at + ' · 数据更新 ' + DATASET.updated_at +
+  ' · schema v' + BLOOM_DATA.schema_version;
+
+function renderList() {
+  var html =
+    '<div class="list-head">' +
+      '<h2>花束品类</h2>' +
+      '<button class="ai-btn" id="aiBtn" title="查看复用包（Prompt + 契约）" aria-label="查看复用包">' +
+        '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 2l1.8 5.6L19.5 9l-5.7 1.8L12 16.4 10.2 10.8 4.5 9l5.7-1.4L12 2zm7 10l.9 2.6 2.6.9-2.6.9L19 19l-.9-2.6-2.6-.9 2.6-.9L19 12zM5 14l.7 2.1L7.8 16.8l-2.1.7L5 19.6l-.7-2.1-2.1-.7 2.1-.7L5 14z"/></svg>' +
+      '</button>' +
+    '</div>' +
+    '<div class="total-line">共识别 <b>' + FLOWERS.length + '</b> 类 · 主配花约 <b>' + bloomTotal + '</b> 朵</div>';
+
+  FLOWERS.forEach(function (f) {
+    var ratio = ratioOf(f);
+    html +=
+      '<div class="flower-item' + (f.id === selectedId ? ' active' : '') + '" data-id="' + f.id + '">' +
+        '<span class="dot" style="background:' + f.color + '"></span>' +
+        '<span class="meta"><div class="name">' + f.name + '</div>' +
+        '<div class="alias">' + f.alias + '</div></span>' +
+        '<span class="count">' + f.count_text + (ratio ? '<div class="ratio">' + ratio + '</div>' : '') + '</span>' +
+      '</div>';
+  });
+
+  html += '<label class="radio-row"><input type="checkbox" id="showAll" ' +
+          (showAll ? 'checked' : '') + '> 显示所有花卉</label>';
+
+  listEl.innerHTML = html;
+
+  listEl.querySelectorAll('[data-id]').forEach(function (el) {
+    el.addEventListener('click', function () { select(el.dataset.id); });
+  });
+  document.getElementById('showAll').addEventListener('change', function (e) {
+    showAll = e.target.checked;
+    renderHotspots();
+  });
+  document.getElementById('aiBtn').addEventListener('click', openModal);
+}
+
+/* 热点：显示所有时每类只留带名字的首框；未选中类淡显但仍可点 */
+function renderHotspots() {
+  hotEl.innerHTML = '';
+  FLOWERS.forEach(function (f) {
+    var active = f.id === selectedId;
+    f.hotspots.forEach(function (r, i) {
+      if (showAll && i !== 0) return;
+      var visible = showAll || active;
+      var box = document.createElement('div');
+      box.className = 'hotspot' + (visible ? '' : ' dim');
+      box.style.left = (r.x * 100) + '%';
+      box.style.top = (r.y * 100) + '%';
+      box.style.width = (r.w * 100) + '%';
+      box.style.height = (r.h * 100) + '%';
+      box.style.borderColor = f.color;
+      box.style.background = f.color + (active ? '33' : '1f');
+      box.title = f.name;
+      if (i === 0 && visible) {
+        var tag = document.createElement('span');
+        tag.className = 'tag';
+        tag.style.background = f.color;
+        tag.style.color = '#3d3327';
+        tag.textContent = f.name;
+        box.appendChild(tag);
+      }
+      box.addEventListener('click', function (e) { e.stopPropagation(); select(f.id); });
+      hotEl.appendChild(box);
+    });
+  });
+}
+
+function renderDetail() {
+  var f = FLOWERS.filter(function (x) { return x.id === selectedId; })[0];
+  var ratio = ratioOf(f);
+  detailEl.innerHTML =
+    '<div class="detail">' +
+      '<span class="badge">' + f.role + '</span>' +
+      '<h2>' + f.name + '</h2>' +
+      '<div class="alias">' + f.alias + ' · ' + f.count_text + (ratio ? ' · 占比 ' + ratio : '') + '</div>' +
+      '<section><h3>花语寓意</h3><p>' + f.meaning + '</p></section>' +
+      '<section><h3>形态特性</h3><p>' + f.feature + '</p></section>' +
+      '<section><h3>花香气味</h3><p>' + f.scent + '</p></section>' +
+      '<section><h3>养护要点</h3><p>' + f.care + '</p></section>' +
+      '<section><h3>标签</h3><div class="tags">' +
+        f.tags.map(function (t) { return '<span>' + t + '</span>'; }).join('') +
+      '</div></section>' +
+      renderContract() +
+    '</div>';
+}
+
+/* 数据契约面板：agent 侧一眼看到能读什么、去哪读 */
+function renderContract() {
+  var f = FLOWERS.filter(function (x) { return x.id === selectedId; })[0];
+  return '<section class="contract">' +
+    '<h3>数据契约（agent 复用）</h3>' +
+    '<dl>' +
+      '<dt>schema</dt><dd>v' + BLOOM_DATA.schema_version + ' · hotspots 归一化 {x,y,w,h} 0~1</dd>' +
+      '<dt>dataset.id</dt><dd>' + DATASET.id + '</dd>' +
+      '<dt>本类 id</dt><dd><code>' + f.id + '</code> · count_num=' + f.count_num +
+        ' · counts_in_bloom=' + f.counts_in_bloom + '</dd>' +
+      '<dt>JSON 直链</dt><dd><a href="/bouquet-data.json">bouquet-data.json</a></dd>' +
+      '<dt>深链</dt><dd>?id=' + f.id + ' · ?prompt=1</dd>' +
+    '</dl>' +
+    '<div class="hintline">新花束照做：把图片交给 agent → 用复用包 Prompt → 按同 schema 回填 flowers 数组 → 换掉本页数据块与 bouquet-data.json 即得新页。</div>' +
+  '</section>';
+}
+
+function select(id) {
+  selectedId = id;
+  showAll = false;
+  renderList();
+  renderHotspots();
+  renderDetail();
+  var active = listEl.querySelector('.flower-item.active');
+  if (active) active.scrollIntoView({ block: 'nearest' });
+}
+
+/* ===== 复用包（Prompt + 契约 + 示例数据） ===== */
+var AGENT_BRIEF = [
+  '【花束识花 · 可复用契约 v' + BLOOM_DATA.schema_version + '】',
+  '来源页面: https://tools.cli.jaden.tech/bouquet.html',
+  '数据直链: https://tools.cli.jaden.tech/bouquet-data.json',
+  '',
+  '任务: 给我任意一张花束照片，按下面的 Prompt 识别，并按 schema 输出 JSON（自然语言解读 + 一个 json 代码块）。',
+  '占比口径: 只统计 counts_in_bloom=true 的品类，分母为它们的 count_num 之和；叶材/配草不计。',
+  '',
+  '【Prompt】',
+  BLOOM_DATA.prompt.text,
+  '',
+  '【schema 摘要】',
+  'schema_version: string',
+  'dataset: {id, title, image, image_alt, image_size:[w,h], source, counted_at, updated_at, count_note, hotspot_space}',
+  'prompt: {version, label, text}',
+  'flowers[]: {id, name, alias, role, color, count_text, count_num, counts_in_bloom, meaning, feature, scent, care, tags[], hotspots[{x,y,w,h}]}',
+  '',
+  '【本图示例数据（可直接替换为新花束结果）】',
+  JSON.stringify(BLOOM_DATA, null, 2)
+].join('\n');
+
+var modal = document.getElementById('promptModal');
+var promptText = document.getElementById('promptText');
+promptText.value = AGENT_BRIEF;
+
+function openModal() { modal.classList.add('open'); }
+function closeModal() { modal.classList.remove('open'); }
+
+document.getElementById('modalClose').addEventListener('click', closeModal);
+document.getElementById('modalCancel').addEventListener('click', closeModal);
+modal.addEventListener('click', function (e) { if (e.target === modal) closeModal(); });
+document.getElementById('topPrompt').addEventListener('click', openModal);
+document.getElementById('topCopy').addEventListener('click', openModal);
+
+document.getElementById('copyBtn').addEventListener('click', function () {
+  var btn = document.getElementById('copyBtn');
+  var old = btn.textContent;
+  function done() { btn.textContent = '已复制 ✓'; setTimeout(function () { btn.textContent = old; }, 1500); }
+  promptText.select();
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(promptText.value).then(done).catch(function () {
+      document.execCommand('copy'); done();
+    });
+  } else {
+    document.execCommand('copy'); done();
+  }
+});
+
+renderList();
+renderHotspots();
+renderDetail();
+if (qs.get('prompt') === '1') openModal();
+</script>
+<!-- build: bouquet @ script-miner c4e43868 2026-11-28 20:31 -->
+</body>
+</html>
